@@ -1,0 +1,267 @@
+---
+import AppShell from '../components/AppShell.astro';
+---
+
+<AppShell pageTitle="Balances" activePath="/balances">
+  <section class="card panel">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px;">
+      <div>
+        <h2 class="panel-title" style="margin-bottom: 4px;">Multi-Currency Balances</h2>
+        <p class="helper-text">Create, edit, and remove balances by currency code.</p>
+      </div>
+      <button class="btn-primary" id="add-balance-btn">Add Balance</button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Currency</th>
+            <th>Name</th>
+            <th>Amount</th>
+            <th>Updated</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="balances-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <p id="balances-error" class="error-text" hidden></p>
+  <p id="balances-success" class="success-text" hidden></p>
+
+  <dialog id="balance-dialog">
+    <form id="balance-form" method="dialog">
+      <header class="dialog-header">
+        <strong id="balance-dialog-title">Add Balance</strong>
+        <button type="button" id="balance-dialog-close">Close</button>
+      </header>
+
+      <div class="dialog-body form-grid">
+        <input type="hidden" id="balance-id" name="balanceId" />
+
+        <div class="form-row">
+          <label for="balance-currency" class="field-label">Currency</label>
+          <select id="balance-currency" name="currencyCode"></select>
+        </div>
+
+        <div class="form-row">
+          <label for="balance-amount" class="field-label">Amount</label>
+          <input
+            id="balance-amount"
+            name="amount"
+            class="input"
+            type="number"
+            min="0"
+            step="0.01"
+            required
+          />
+        </div>
+      </div>
+
+      <footer class="dialog-footer">
+        <button type="button" id="balance-dialog-cancel">Cancel</button>
+        <button type="submit" class="btn-primary" id="balance-submit-btn">Save</button>
+      </footer>
+    </form>
+  </dialog>
+</AppShell>
+
+<script type="module">
+  import {
+    ApiError,
+    listBalances,
+    listCurrencies,
+    upsertBalance,
+    updateBalance,
+    deleteBalance,
+  } from '/lib/client-api.js';
+
+  const balancesBody = document.getElementById('balances-body');
+  const errorEl = document.getElementById('balances-error');
+  const successEl = document.getElementById('balances-success');
+
+  const dialog = document.getElementById('balance-dialog');
+  const dialogTitle = document.getElementById('balance-dialog-title');
+  const dialogClose = document.getElementById('balance-dialog-close');
+  const dialogCancel = document.getElementById('balance-dialog-cancel');
+  const addButton = document.getElementById('add-balance-btn');
+
+  const form = document.getElementById('balance-form');
+  const balanceIdInput = document.getElementById('balance-id');
+  const currencyInput = document.getElementById('balance-currency');
+  const amountInput = document.getElementById('balance-amount');
+
+  let cachedBalances = [];
+
+  function formatMoney(value, code) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+      maximumFractionDigits: code === 'IDR' ? 0 : 2,
+    }).format(Number(value) || 0);
+  }
+
+  function formatDate(value) {
+    return new Date(value).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  function showStatus({ error = '', success = '' }) {
+    errorEl.hidden = !error;
+    successEl.hidden = !success;
+    errorEl.textContent = error;
+    successEl.textContent = success;
+  }
+
+  function renderBalances(balances) {
+    if (!balances || balances.length === 0) {
+      balancesBody.innerHTML =
+        '<tr><td colspan="5" class="helper-text">No balances found. Add your first balance.</td></tr>';
+      return;
+    }
+
+    balancesBody.innerHTML = balances
+      .map(
+        (balance) => `
+          <tr>
+            <td>${balance.currency_code}</td>
+            <td>${balance.currency_name}</td>
+            <td>${formatMoney(balance.balance, balance.currency_code)}</td>
+            <td>${formatDate(balance.updated_at)}</td>
+            <td>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" data-action="edit" data-balance-id="${balance.id}">Edit</button>
+                <button type="button" class="btn-danger" data-action="delete" data-balance-id="${balance.id}">
+                  Delete
+                </button>
+              </div>
+            </td>
+          </tr>
+        `
+      )
+      .join('');
+  }
+
+  async function populateCurrencyOptions() {
+    const currencies = await listCurrencies();
+    currencyInput.innerHTML = currencies
+      .map((currency) => `<option value="${currency.code}">${currency.code} - ${currency.name}</option>`)
+      .join('');
+  }
+
+  async function refreshBalances() {
+    cachedBalances = await listBalances();
+    renderBalances(cachedBalances);
+  }
+
+  function openAddDialog() {
+    form.reset();
+    balanceIdInput.value = '';
+    currencyInput.disabled = false;
+    dialogTitle.textContent = 'Add Balance';
+    dialog.showModal();
+  }
+
+  function openEditDialog(balanceId) {
+    const balance = cachedBalances.find((item) => item.id === balanceId);
+    if (!balance) {
+      return;
+    }
+
+    form.reset();
+    balanceIdInput.value = balance.id;
+    currencyInput.value = balance.currency_code;
+    currencyInput.disabled = true;
+    amountInput.value = String(balance.balance);
+    dialogTitle.textContent = `Edit Balance (${balance.currency_code})`;
+    dialog.showModal();
+  }
+
+  addButton?.addEventListener('click', openAddDialog);
+
+  dialogClose?.addEventListener('click', () => dialog.close());
+  dialogCancel?.addEventListener('click', () => dialog.close());
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    showStatus({});
+
+    const balanceId = balanceIdInput.value;
+
+    try {
+      if (balanceId) {
+        await updateBalance(balanceId, {
+          amount: amountInput.value,
+        });
+        showStatus({ success: 'Balance updated successfully.' });
+      } else {
+        await upsertBalance({
+          currencyCode: currencyInput.value,
+          amount: amountInput.value,
+        });
+        showStatus({ success: 'Balance saved successfully.' });
+      }
+
+      dialog.close();
+      await refreshBalances();
+    } catch (error) {
+      showStatus({
+        error: error instanceof ApiError ? error.message : 'Failed to save balance.',
+      });
+    }
+  });
+
+  balancesBody?.addEventListener('click', async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    const action = target.dataset.action;
+    const balanceId = target.dataset.balanceId;
+
+    if (!action || !balanceId) {
+      return;
+    }
+
+    if (action === 'edit') {
+      openEditDialog(balanceId);
+      return;
+    }
+
+    if (action === 'delete') {
+      const confirmed = window.confirm('Delete this balance?');
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await deleteBalance(balanceId);
+        showStatus({ success: 'Balance deleted successfully.' });
+        await refreshBalances();
+      } catch (error) {
+        showStatus({
+          error: error instanceof ApiError ? error.message : 'Failed to delete balance.',
+        });
+      }
+    }
+  });
+
+  async function bootstrap() {
+    await populateCurrencyOptions();
+    await refreshBalances();
+  }
+
+  bootstrap().catch((error) => {
+    showStatus({
+      error: error instanceof ApiError ? error.message : 'Failed to load balances.',
+    });
+  });
+</script>

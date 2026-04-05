@@ -1,0 +1,19 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Public Mode | Open Money Management">
+  <main class="auth-page">
+    <section class="auth-card card">
+      <h1 class="auth-title">Public Access Enabled</h1>
+      <p class="auth-subtitle">
+        Authentication and session cookies are disabled. Anyone can use this self-hosted app directly.
+      </p>
+
+      <div style="display: flex; gap: 10px; margin-top: 8px;">
+        <a class="btn btn-primary" href="/dashboard">Go To Dashboard</a>
+        <a class="btn" href="/balances">Open Balances</a>
+      </div>
+    </section>
+  </main>
+</Layout>

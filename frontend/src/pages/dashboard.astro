@@ -1,0 +1,379 @@
+---
+import AppShell from '../components/AppShell.astro';
+---
+
+<AppShell pageTitle="Dashboard" activePath="/dashboard">
+  <section class="hero-strip">
+    <h2 style="font-size: 1.35rem;">Financial Snapshot</h2>
+    <p class="helper-text" style="margin-top: 8px;">
+      Consolidated view of balances, conversion totals, and income vs expenses.
+    </p>
+  </section>
+
+  <section class="grid-3" id="stat-cards">
+    <article class="card panel">
+      <h3 class="panel-title">Total in USD</h3>
+      <div class="stat-value" id="total-usd">$0.00</div>
+      <p class="stat-caption" id="total-usd-meta">Awaiting rates</p>
+    </article>
+
+    <article class="card panel">
+      <h3 class="panel-title">Total in IDR</h3>
+      <div class="stat-value" id="total-idr">Rp0</div>
+      <p class="stat-caption" id="total-idr-meta">Awaiting rates</p>
+    </article>
+
+    <article class="card panel">
+      <h3 class="panel-title">Tracked Balances</h3>
+      <div class="stat-value" id="balance-count">0</div>
+      <p class="stat-caption">Currencies currently tracked for this user</p>
+    </article>
+  </section>
+
+  <section class="grid-2">
+    <article class="card panel">
+      <h3 class="panel-title">Income vs Expenses (Last 6 Months)</h3>
+      <canvas id="income-expense-chart" aria-label="Income versus expenses chart"></canvas>
+    </article>
+
+    <article class="card panel">
+      <h3 class="panel-title">Quick Actions</h3>
+      <div class="quick-actions" style="margin-bottom: 14px;">
+        <a class="btn" href="/balances">Manage Balances</a>
+        <a class="btn" href="/settings/currencies">Currency Settings</a>
+      </div>
+
+      <form id="transaction-form" class="form-grid">
+        <div class="form-grid columns-2">
+          <div class="form-row">
+            <label class="field-label" for="tx-type">Transaction Type</label>
+            <select id="tx-type" name="type">
+              <option value="deposit">Deposit</option>
+              <option value="withdrawal">Withdrawal</option>
+              <option value="transfer_in">Transfer In</option>
+              <option value="transfer_out">Transfer Out</option>
+              <option value="conversion">Conversion</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <label class="field-label" for="tx-currency">Currency</label>
+            <select id="tx-currency" name="currencyCode"></select>
+          </div>
+        </div>
+
+        <div class="form-grid columns-2">
+          <div class="form-row">
+            <label class="field-label" for="tx-amount">Amount</label>
+            <input id="tx-amount" name="amount" type="number" class="input" min="0.01" step="0.01" required />
+          </div>
+
+          <div class="form-row" id="tx-reference-currency-row" hidden>
+            <label class="field-label" for="tx-reference-currency">Reference Currency</label>
+            <select id="tx-reference-currency" name="referenceCurrencyCode"></select>
+          </div>
+        </div>
+
+        <div class="form-grid columns-2">
+          <div class="form-row" id="tx-reference-amount-row" hidden>
+            <label class="field-label" for="tx-reference-amount">Reference Amount</label>
+            <input
+              id="tx-reference-amount"
+              name="referenceAmount"
+              type="number"
+              class="input"
+              min="0.01"
+              step="0.01"
+            />
+          </div>
+
+          <div class="form-row">
+            <label class="field-label" for="tx-description">Description</label>
+            <input id="tx-description" name="description" class="input" placeholder="Optional note" />
+          </div>
+        </div>
+
+        <p class="error-text" id="tx-error" hidden></p>
+        <p class="success-text" id="tx-success" hidden></p>
+
+        <div>
+          <button type="submit" class="btn-primary">Save Transaction</button>
+        </div>
+      </form>
+    </article>
+  </section>
+
+  <section class="card panel">
+    <h3 class="panel-title">Balances Overview</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Currency</th>
+            <th>Name</th>
+            <th>Amount</th>
+            <th>Last Updated</th>
+          </tr>
+        </thead>
+        <tbody id="balances-table-body"></tbody>
+      </table>
+    </div>
+  </section>
+</AppShell>
+
+<script type="module">
+  import Chart from 'chart.js/auto';
+  import {
+    ApiError,
+    getDashboardSummary,
+    listCurrencies,
+    createTransaction,
+  } from '/lib/client-api.js';
+
+  const totalUsdEl = document.getElementById('total-usd');
+  const totalUsdMetaEl = document.getElementById('total-usd-meta');
+  const totalIdrEl = document.getElementById('total-idr');
+  const totalIdrMetaEl = document.getElementById('total-idr-meta');
+  const balanceCountEl = document.getElementById('balance-count');
+  const balancesTableBody = document.getElementById('balances-table-body');
+
+  const transactionForm = document.getElementById('transaction-form');
+  const txType = document.getElementById('tx-type');
+  const txCurrency = document.getElementById('tx-currency');
+  const txAmount = document.getElementById('tx-amount');
+  const txReferenceCurrencyRow = document.getElementById('tx-reference-currency-row');
+  const txReferenceCurrency = document.getElementById('tx-reference-currency');
+  const txReferenceAmountRow = document.getElementById('tx-reference-amount-row');
+  const txReferenceAmount = document.getElementById('tx-reference-amount');
+  const txDescription = document.getElementById('tx-description');
+  const txError = document.getElementById('tx-error');
+  const txSuccess = document.getElementById('tx-success');
+  const incomeExpenseCanvas = document.getElementById('income-expense-chart');
+  let incomeExpenseChart = null;
+
+  function formatMoney(value, currencyCode) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currencyCode,
+      maximumFractionDigits: currencyCode === 'IDR' ? 0 : 2,
+    }).format(Number(value) || 0);
+  }
+
+  function formatDate(value) {
+    return new Date(value).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  function formatMissingRates(missingRates) {
+    if (!missingRates || missingRates.length === 0) {
+      return 'All rates available';
+    }
+
+    return `Missing rates: ${missingRates.join(', ')}`;
+  }
+
+  function toggleConversionFields() {
+    const isConversion = txType.value === 'conversion';
+    txReferenceCurrencyRow.hidden = !isConversion;
+    txReferenceAmountRow.hidden = !isConversion;
+
+    if (!isConversion) {
+      txReferenceCurrency.value = '';
+      txReferenceAmount.value = '';
+    }
+  }
+
+  function showTransactionStatus({ error = '', success = '' }) {
+    txError.hidden = !error;
+    txSuccess.hidden = !success;
+    txError.textContent = error;
+    txSuccess.textContent = success;
+  }
+
+  function renderBalances(balances) {
+    if (!balances || balances.length === 0) {
+      balancesTableBody.innerHTML =
+        '<tr><td colspan="4" class="helper-text">No balances yet. Add one from Balances page.</td></tr>';
+      return;
+    }
+
+    balancesTableBody.innerHTML = balances
+      .map(
+        (balance) => `
+          <tr>
+            <td>${balance.currency_code}</td>
+            <td>${balance.currency_name}</td>
+            <td>${formatMoney(balance.balance, balance.currency_code)}</td>
+            <td>${formatDate(balance.updated_at)}</td>
+          </tr>
+        `
+      )
+      .join('');
+  }
+
+  function renderIncomeExpenseChart(data) {
+    if (!incomeExpenseCanvas) {
+      return;
+    }
+
+    const normalizedData = Array.isArray(data) ? data : [];
+    const labels = normalizedData.map((item) => item.label);
+    const income = normalizedData.map((item) => Number(item.income) || 0);
+    const expense = normalizedData.map((item) => Number(item.expense) || 0);
+
+    if (incomeExpenseChart) {
+      incomeExpenseChart.data.labels = labels;
+      incomeExpenseChart.data.datasets[0].data = income;
+      incomeExpenseChart.data.datasets[1].data = expense;
+      incomeExpenseChart.update();
+      return;
+    }
+
+    incomeExpenseChart = new Chart(incomeExpenseCanvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Income',
+            data: income,
+            backgroundColor: '#8bc5ff',
+            borderColor: '#5ea9f3',
+            borderWidth: 1,
+            borderRadius: 8,
+          },
+          {
+            label: 'Expense',
+            data: expense,
+            backgroundColor: '#ffc9c2',
+            borderColor: '#f5a197',
+            borderWidth: 1,
+            borderRadius: 8,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false,
+        },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: {
+              boxWidth: 14,
+              color: '#52627a',
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: {
+              display: false,
+            },
+            ticks: {
+              color: '#52627a',
+            },
+          },
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: '#e4ebf5',
+            },
+            ticks: {
+              color: '#52627a',
+            },
+          },
+        },
+      },
+    });
+  }
+
+  async function populateCurrencyOptions() {
+    const currencies = await listCurrencies();
+
+    const options = currencies
+      .map(
+        (currency) =>
+          `<option value="${currency.code}">${currency.code} - ${currency.name}</option>`
+      )
+      .join('');
+
+    txCurrency.innerHTML = options;
+    txReferenceCurrency.innerHTML = `<option value="">Select currency</option>${options}`;
+  }
+
+  async function refreshDashboard() {
+    const summary = await getDashboardSummary();
+
+    totalUsdEl.textContent = formatMoney(summary.totals.usd.total, 'USD');
+    totalUsdMetaEl.textContent = formatMissingRates(summary.totals.usd.missingRates);
+
+    totalIdrEl.textContent = formatMoney(summary.totals.idr.total, 'IDR');
+    totalIdrMetaEl.textContent = formatMissingRates(summary.totals.idr.missingRates);
+
+    balanceCountEl.textContent = String(summary.balances.length);
+
+    renderBalances(summary.balances);
+    renderIncomeExpenseChart(summary.incomeExpense);
+  }
+
+  transactionForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    showTransactionStatus({});
+
+    const payload = {
+      type: txType.value,
+      currencyCode: txCurrency.value,
+      amount: txAmount.value,
+      description: txDescription.value,
+    };
+
+    if (txType.value === 'conversion') {
+      payload.referenceCurrencyCode = txReferenceCurrency.value;
+      payload.referenceAmount = txReferenceAmount.value;
+    }
+
+    try {
+      await createTransaction(payload);
+      showTransactionStatus({ success: 'Transaction saved successfully.' });
+      transactionForm.reset();
+      toggleConversionFields();
+      await refreshDashboard();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Failed to save transaction.';
+      showTransactionStatus({ error: message });
+    }
+  });
+
+  txType?.addEventListener('change', toggleConversionFields);
+
+  async function bootstrap() {
+    await populateCurrencyOptions();
+    toggleConversionFields();
+    await refreshDashboard();
+  }
+
+  bootstrap().catch((error) => {
+    showTransactionStatus({
+      error: error instanceof ApiError ? error.message : 'Failed to load dashboard data.',
+    });
+  });
+</script>
+
+<style>
+  #income-expense-chart {
+    height: 310px;
+    width: 100%;
+    border-radius: 16px;
+    border: 1px solid #e4ebf5;
+    background: #fff;
+  }
+</style>

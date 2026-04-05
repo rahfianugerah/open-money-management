@@ -1,0 +1,9 @@
+---
+const { title, value = '-', caption = '' } = Astro.props;
+---
+
+<article class="card panel">
+  <h3 class="panel-title">{title}</h3>
+  <div class="stat-value">{value}</div>
+  {caption && <p class="stat-caption">{caption}</p>}
+</article>

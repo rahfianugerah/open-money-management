@@ -36,7 +36,9 @@ async function createTransaction({
   referenceCurrencyId,
   referenceAmount,
   description,
+  occurredAt,
 }) {
+  // created_at can be provided explicitly for backdated/expense datetime support.
   const result = await query(
     `
       INSERT INTO transactions (
@@ -46,9 +48,10 @@ async function createTransaction({
         amount,
         reference_currency_id,
         reference_amount,
-        description
+        description,
+        created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::timestamp, NOW()))
       RETURNING id, user_id, currency_id, type, amount, reference_currency_id, reference_amount, description, created_at
     `,
     [
@@ -59,6 +62,7 @@ async function createTransaction({
       referenceCurrencyId,
       referenceAmount,
       description,
+      occurredAt,
     ]
   );
 

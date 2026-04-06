@@ -9,8 +9,73 @@ const currencyRepository = require('../repositories/currency-repository');
 const rateRepository = require('../repositories/rate-repository');
 const settingsRepository = require('../repositories/settings-repository');
 
-async function listCurrencies() {
+const BASE_CURRENCY_SEED = [
+  { code: 'USD', name: 'US Dollar', symbol: '$' },
+  { code: 'IDR', name: 'Indonesian Rupiah', symbol: 'Rp' },
+];
+
+const BASE_RATE_SEED = [
+  { baseCode: 'USD', targetCode: 'IDR', rate: 17014 },
+  { baseCode: 'IDR', targetCode: 'USD', rate: 0.000059 },
+];
+
+/**
+ * Guarantees baseline currencies exist for first-run and unexpected reset scenarios.
+ */
+async function ensureBaseCurrencies() {
+  for (const seed of BASE_CURRENCY_SEED) {
+    const existing = await currencyRepository.findCurrencyByCode(seed.code);
+    if (!existing) {
+      await currencyRepository.createCurrency({
+        code: seed.code,
+        name: seed.name,
+        symbol: seed.symbol,
+        isDefault: false,
+      });
+    }
+  }
+
+  const currencies = await currencyRepository.listCurrencies();
+
+  // Ensure at least one default exists so UI forms always have a clear base currency.
+  if (!currencies.some((currency) => currency.is_default)) {
+    const usd = currencies.find((currency) => currency.code === 'USD');
+    if (usd) {
+      await currencyRepository.clearDefaultCurrencies();
+      await currencyRepository.updateCurrency(usd.id, {
+        name: null,
+        symbol: null,
+        isDefault: true,
+      });
+    }
+  }
+
   return currencyRepository.listCurrencies();
+}
+
+/**
+ * Keeps baseline USD/IDR rates available so totals render immediately.
+ */
+async function ensureBaseRates(currencies) {
+  const currencyMap = new Map(currencies.map((currency) => [currency.code, currency]));
+
+  for (const seed of BASE_RATE_SEED) {
+    const baseCurrency = currencyMap.get(seed.baseCode);
+    const targetCurrency = currencyMap.get(seed.targetCode);
+
+    if (!baseCurrency || !targetCurrency) {
+      continue;
+    }
+
+    const existing = await rateRepository.findRate(baseCurrency.id, targetCurrency.id);
+    if (!existing) {
+      await rateRepository.upsertRate(baseCurrency.id, targetCurrency.id, seed.rate);
+    }
+  }
+}
+
+async function listCurrencies() {
+  return ensureBaseCurrencies();
 }
 
 async function createCurrency({ code, name, symbol, isDefault }) {
@@ -54,6 +119,7 @@ async function updateCurrency(currencyId, { name, symbol, isDefault }) {
 }
 
 async function findCurrencyByCodeOrThrow(code) {
+  await ensureBaseCurrencies();
   const normalizedCode = normalizeCurrencyCode(code);
   const currency = await currencyRepository.findCurrencyByCode(normalizedCode);
 
@@ -65,6 +131,8 @@ async function findCurrencyByCodeOrThrow(code) {
 }
 
 async function listRates() {
+  const currencies = await ensureBaseCurrencies();
+  await ensureBaseRates(currencies);
   return rateRepository.listRates();
 }
 
@@ -98,6 +166,9 @@ async function updateRateById(rateId, rate) {
 }
 
 async function convertAmount({ amount, fromCode, toCode, manualRate = null }) {
+  const currencies = await ensureBaseCurrencies();
+  await ensureBaseRates(currencies);
+
   const parsedAmount = ensurePositiveAmount(amount, 'amount');
   const fromCurrency = await findCurrencyByCodeOrThrow(fromCode);
   const toCurrency = await findCurrencyByCodeOrThrow(toCode);

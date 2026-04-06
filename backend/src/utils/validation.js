@@ -38,9 +38,27 @@ function normalizeCurrencyCode(code, fieldName = 'currencyCode') {
   return normalizedCode;
 }
 
+/**
+ * Normalizes optional datetime input into a UTC ISO string.
+ * Edge case: HTML datetime-local has no timezone, so we parse in local time and convert to ISO.
+ */
+function parseOptionalDateTime(value, fieldName = 'occurredAt') {
+  if (typeof value === 'undefined' || value === null || String(value).trim() === '') {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) {
+    throw new AppError(`${fieldName} must be a valid datetime`, 400);
+  }
+
+  return parsed.toISOString();
+}
+
 module.exports = {
   requireNonEmptyString,
   parseAmount,
   ensurePositiveAmount,
   normalizeCurrencyCode,
+  parseOptionalDateTime,
 };

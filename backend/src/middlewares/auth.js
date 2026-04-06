@@ -1,39 +1,53 @@
-const userRepository = require('../repositories/user-repository');
+const AppError = require('../utils/app-error');
+const authService = require('../services/auth-service');
 
-const PUBLIC_USERNAME = '_public_open_user_';
-const PUBLIC_PASSWORD_PLACEHOLDER = 'auth-disabled-public-mode';
+/**
+ * Extracts bearer token from Authorization header.
+ * Expected header shape: "Authorization: Bearer <token>".
+ */
+function readBearerToken(req) {
+  const header = req.headers?.authorization;
 
-async function resolvePublicUser() {
-  const existingUser = await userRepository.findByUsername(PUBLIC_USERNAME);
-  if (existingUser) {
-    return existingUser;
+  if (!header || typeof header !== 'string') {
+    return null;
   }
 
-  try {
-    return await userRepository.createUser({
-      username: PUBLIC_USERNAME,
-      passwordHash: PUBLIC_PASSWORD_PLACEHOLDER,
-    });
-  } catch (error) {
-    if (error?.code === '23505') {
-      return userRepository.findByUsername(PUBLIC_USERNAME);
-    }
-
-    throw error;
+  const [scheme, token] = header.split(' ');
+  if (scheme?.toLowerCase() !== 'bearer' || !token) {
+    return null;
   }
+
+  return token;
 }
 
+/**
+ * Auth middleware for all protected APIs.
+ * On success, req.auth is populated with { userId, username }.
+ */
 async function requireAuth(req, res, next) {
-  const publicUser = await resolvePublicUser();
+  try {
+    const token = readBearerToken(req);
+    if (!token) {
+      throw new AppError('Not authenticated', 401);
+    }
 
-  req.auth = {
-    userId: publicUser.id,
-    username: publicUser.username,
-  };
+    const user = await authService.getSessionUser(token);
+    if (!user) {
+      throw new AppError('Not authenticated', 401);
+    }
 
-  return next();
+    req.auth = {
+      userId: user.id,
+      username: user.username,
+    };
+
+    return next();
+  } catch (error) {
+    return next(error);
+  }
 }
 
 module.exports = {
+  readBearerToken,
   requireAuth,
 };

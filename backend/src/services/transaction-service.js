@@ -4,6 +4,7 @@ const {
   ensurePositiveAmount,
   normalizeCurrencyCode,
   requireNonEmptyString,
+  parseOptionalDateTime,
 } = require('../utils/validation');
 const transactionRepository = require('../repositories/transaction-repository');
 const balanceRepository = require('../repositories/balance-repository');
@@ -46,6 +47,7 @@ async function createTransaction(userId, payload) {
   const currencyCode = normalizeCurrencyCode(payload.currencyCode, 'currencyCode');
   const amount = ensurePositiveAmount(payload.amount, 'amount');
   const description = payload.description?.trim() || null;
+  const occurredAt = parseOptionalDateTime(payload.occurredAt, 'occurredAt');
 
   const currency = await currencyService.findCurrencyByCodeOrThrow(currencyCode);
 
@@ -71,6 +73,11 @@ async function createTransaction(userId, payload) {
     }
   }
 
+  // Expense operations should always carry a concrete datetime for accurate reporting.
+  if ((type === 'withdrawal' || type === 'transfer_out') && !occurredAt) {
+    throw new AppError('occurredAt is required for expense transactions', 400);
+  }
+
   const transaction = await transactionRepository.createTransaction({
     userId,
     currencyId: currency.id,
@@ -79,6 +86,7 @@ async function createTransaction(userId, payload) {
     referenceCurrencyId: referenceCurrency?.id || null,
     referenceAmount,
     description,
+    occurredAt,
   });
 
   if (type === 'deposit' || type === 'transfer_in') {

@@ -1,0 +1,77 @@
+---
+import AuthLayout from '../layouts/AuthLayout.astro';
+---
+
+<AuthLayout title="Register | Open Money Management">
+  <main class="auth-page">
+    <section class="auth-card card">
+      <h1 class="auth-title">Create Account</h1>
+      <p class="auth-subtitle">Create your username and password, then sign in.</p>
+
+      <form id="register-form" class="form-grid" style="margin-top: 6px;">
+        <div class="form-row">
+          <label class="field-label" for="register-username">Username</label>
+          <input id="register-username" class="input" name="username" required minlength="3" />
+        </div>
+
+        <div class="form-row">
+          <label class="field-label" for="register-password">Password</label>
+          <input
+            id="register-password"
+            class="input"
+            name="password"
+            type="password"
+            required
+            minlength="8"
+          />
+        </div>
+
+        <p id="register-error" class="error-text" hidden></p>
+        <p id="register-success" class="success-text" hidden></p>
+
+        <div class="auth-actions">
+          <button class="btn-primary" type="submit">Create Account</button>
+          <a class="btn" href="/login">Back To Login</a>
+        </div>
+      </form>
+    </section>
+  </main>
+</AuthLayout>
+
+<script type="module">
+  import { ApiError, register } from '/lib/client-api.js';
+
+  const form = document.getElementById('register-form');
+  const usernameInput = document.getElementById('register-username');
+  const passwordInput = document.getElementById('register-password');
+  const errorEl = document.getElementById('register-error');
+  const successEl = document.getElementById('register-success');
+
+  function showStatus({ error = '', success = '' }) {
+    errorEl.hidden = !error;
+    successEl.hidden = !success;
+    errorEl.textContent = error;
+    successEl.textContent = success;
+  }
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    showStatus({});
+
+    try {
+      await register({
+        username: usernameInput.value,
+        password: passwordInput.value,
+      });
+
+      showStatus({ success: 'Account created. Redirecting to login...' });
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 900);
+    } catch (error) {
+      showStatus({
+        error: error instanceof ApiError ? error.message : 'Registration failed.',
+      });
+    }
+  });
+</script>

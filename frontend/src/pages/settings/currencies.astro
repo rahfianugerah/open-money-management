@@ -93,7 +93,7 @@ import AppShell from '../../components/AppShell.astro';
         </div>
       </div>
 
-      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+      <div class="inline-actions">
         <button class="btn-primary" type="submit">Save Provider Settings</button>
         <button id="sync-rates-btn" type="button">Sync Rates From Provider</button>
       </div>
@@ -372,6 +372,11 @@ import AppShell from '../../components/AppShell.astro';
   });
 
   async function bootstrap() {
+    // Wait for AppShell auth bootstrap so protected API calls don't race token validation.
+    if (window.__ommAuthReady) {
+      await window.__ommAuthReady;
+    }
+
     const providerConfig = await getProviderConfig();
 
     providerEnabled.value = String(Boolean(providerConfig.enabled));

@@ -4,9 +4,9 @@ import AppShell from '../components/AppShell.astro';
 
 <AppShell pageTitle="Balances" activePath="/balances">
   <section class="card panel">
-    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px;">
+    <div class="section-header section-header-spread" style="margin-bottom: 14px;">
       <div>
-        <h2 class="panel-title" style="margin-bottom: 4px;">Multi-Currency Balances</h2>
+        <h2 class="panel-title panel-title-tight">Multi-Currency Balances</h2>
         <p class="helper-text">Create, edit, and remove balances by currency code.</p>
       </div>
       <button class="btn-primary" id="add-balance-btn">Add Balance</button>
@@ -136,7 +136,7 @@ import AppShell from '../components/AppShell.astro';
             <td>${formatMoney(balance.balance, balance.currency_code)}</td>
             <td>${formatDate(balance.updated_at)}</td>
             <td>
-              <div style="display: flex; gap: 8px;">
+              <div class="row-actions">
                 <button type="button" data-action="edit" data-balance-id="${balance.id}">Edit</button>
                 <button type="button" class="btn-danger" data-action="delete" data-balance-id="${balance.id}">
                   Delete
@@ -255,6 +255,11 @@ import AppShell from '../components/AppShell.astro';
   });
 
   async function bootstrap() {
+    // Wait for AppShell auth bootstrap so initial API calls always include a valid token.
+    if (window.__ommAuthReady) {
+      await window.__ommAuthReady;
+    }
+
     await populateCurrencyOptions();
     await refreshBalances();
   }

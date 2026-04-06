@@ -2,6 +2,7 @@ const ENV_API_BASE =
   typeof import.meta !== 'undefined' && import.meta.env
     ? import.meta.env.PUBLIC_API_BASE_URL
     : undefined;
+const AUTH_STORAGE_KEY = 'omm-auth-token-v1';
 
 const API_BASE = (ENV_API_BASE || window.__PUBLIC_API_BASE_URL__ || 'http://localhost:3000').replace(
   /\/+$/,
@@ -21,6 +22,22 @@ function buildApiUrl(path) {
   return `${API_BASE}${normalizedPath}`;
 }
 
+/**
+ * Local auth token persistence used by page modules.
+ */
+function readAuthToken() {
+  return localStorage.getItem(AUTH_STORAGE_KEY) || '';
+}
+
+function writeAuthToken(token) {
+  if (!token) {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    return;
+  }
+
+  localStorage.setItem(AUTH_STORAGE_KEY, token);
+}
+
 async function parsePayload(response) {
   const payload = await response.json().catch(() => ({}));
 
@@ -32,9 +49,14 @@ async function parsePayload(response) {
 }
 
 export async function apiRequest(path, options = {}) {
+  const token = readAuthToken();
   const headers = {
     ...(options.headers || {}),
   };
+
+  if (token && !headers.Authorization) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
   const hasBody = options.body !== undefined && options.body !== null;
   if (hasBody && !headers['Content-Type']) {
@@ -42,37 +64,54 @@ export async function apiRequest(path, options = {}) {
   }
 
   const response = await fetch(buildApiUrl(path), {
-    credentials: 'include',
     ...options,
     headers,
   });
+
+  if (response.status === 401 && !path.startsWith('/api/auth/')) {
+    writeAuthToken('');
+  }
 
   return parsePayload(response);
 }
 
 export async function ensureSession() {
-  return {
-    id: 'public',
-    username: 'Public Mode',
-  };
+  return apiRequest('/api/auth/session');
 }
 
-export async function register() {
-  return {
-    message: 'Authentication is disabled in public mode.',
-  };
+export async function register(payload) {
+  return apiRequest('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
-export async function login() {
-  return {
-    message: 'Authentication is disabled in public mode.',
-  };
+export async function login(payload) {
+  const loginResult = await apiRequest('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  writeAuthToken(loginResult.token);
+  return loginResult;
 }
 
 export async function logout() {
+  try {
+    await apiRequest('/api/auth/logout', {
+      method: 'POST',
+    });
+  } finally {
+    writeAuthToken('');
+  }
+
   return {
-    message: 'Authentication is disabled in public mode.',
+    message: 'Logged out',
   };
+}
+
+export function hasAuthToken() {
+  return Boolean(readAuthToken());
 }
 
 export async function getDashboardSummary() {

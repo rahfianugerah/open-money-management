@@ -1,16 +1,28 @@
 ---
-import Layout from '../layouts/Layout.astro';
+import AuthLayout from '../layouts/AuthLayout.astro';
 ---
 
-<Layout title="Open Money Management">
+<AuthLayout title="Open Money Management">
 	<main class="auth-page">
 		<section class="card auth-card">
 			<h1 class="auth-title">Open Money Management</h1>
-			<p class="auth-subtitle">Public mode is enabled. Redirecting to dashboard...</p>
+			<p class="auth-subtitle">Checking authentication and redirecting...</p>
 		</section>
 	</main>
-</Layout>
+</AuthLayout>
 
 <script type="module">
-	window.location.href = '/dashboard';
+	import { ensureSession, hasAuthToken } from '/lib/client-api.js';
+
+	// Root route always resolves to either login or dashboard based on token validity.
+	if (!hasAuthToken()) {
+		window.location.href = '/login';
+	} else {
+		try {
+			await ensureSession();
+			window.location.href = '/dashboard';
+		} catch {
+			window.location.href = '/login';
+		}
+	}
 </script>

@@ -1,0 +1,15 @@
+---
+import AppShell from '../components/AppShell.astro';
+import ChatbotWidget from '../components/ChatbotWidget.astro';
+---
+
+<AppShell pageTitle="Chatbot">
+  <section class="card panel">
+    <h2 class="panel-title panel-title-tight">Finance Chat Assistant</h2>
+    <p class="helper-text">Ask about balances, spending patterns, transaction planning, and currency conversion strategy.</p>
+  </section>
+
+  <section class="card panel chatbot-primary-panel" aria-label="Chatbot primary section">
+    <ChatbotWidget mode="page" />
+  </section>
+</AppShell>

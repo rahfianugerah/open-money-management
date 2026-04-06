@@ -1,19 +1,85 @@
 ---
-import Layout from '../layouts/Layout.astro';
+import AuthLayout from '../layouts/AuthLayout.astro';
 ---
 
-<Layout title="Public Mode | Open Money Management">
+<AuthLayout title="Login | Open Money Management">
   <main class="auth-page">
     <section class="auth-card card">
-      <h1 class="auth-title">Public Access Enabled</h1>
-      <p class="auth-subtitle">
-        Authentication and session cookies are disabled. Anyone can use this self-hosted app directly.
-      </p>
+      <h1 class="auth-title">Sign In</h1>
+      <p class="auth-subtitle">Use your username and password to access the application.</p>
 
-      <div style="display: flex; gap: 10px; margin-top: 8px;">
-        <a class="btn btn-primary" href="/dashboard">Go To Dashboard</a>
-        <a class="btn" href="/balances">Open Balances</a>
-      </div>
+      <form id="auth-form" class="form-grid" style="margin-top: 6px;">
+        <div class="form-row">
+          <label class="field-label" for="auth-username">Username</label>
+          <input id="auth-username" class="input" name="username" required minlength="3" />
+        </div>
+
+        <div class="form-row">
+          <label class="field-label" for="auth-password">Password</label>
+          <input
+            id="auth-password"
+            class="input"
+            name="password"
+            type="password"
+            required
+            minlength="8"
+          />
+        </div>
+
+        <p id="auth-error" class="error-text" hidden></p>
+
+        <div class="auth-actions">
+          <button class="btn-primary" type="submit">Login</button>
+          <a class="btn" href="/register">Create Account</a>
+        </div>
+      </form>
     </section>
   </main>
-</Layout>
+</AuthLayout>
+
+<script type="module">
+  import { ApiError, ensureSession, hasAuthToken, login } from '/lib/client-api.js';
+
+  const authForm = document.getElementById('auth-form');
+  const usernameInput = document.getElementById('auth-username');
+  const passwordInput = document.getElementById('auth-password');
+  const errorEl = document.getElementById('auth-error');
+
+  function showStatus({ error = '' }) {
+    errorEl.hidden = !error;
+    errorEl.textContent = error;
+  }
+
+  async function redirectIfAuthenticated() {
+    if (!hasAuthToken()) {
+      return;
+    }
+
+    try {
+      await ensureSession();
+      window.location.href = '/dashboard';
+    } catch {
+      // Token is invalid/expired; user stays on login page.
+    }
+  }
+
+  authForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    showStatus({});
+
+    try {
+      await login({
+        username: usernameInput.value,
+        password: passwordInput.value,
+      });
+
+      window.location.href = '/dashboard';
+    } catch (error) {
+      showStatus({
+        error: error instanceof ApiError ? error.message : 'Login failed.',
+      });
+    }
+  });
+
+  redirectIfAuthenticated();
+</script>

@@ -2,6 +2,14 @@
 import '../styles/global.css';
 
 const { title = 'Open Money Management' } = Astro.props;
+const pathname = Astro.url.pathname;
+
+const topNavLinks = [
+	{ href: '/dashboard', label: 'Dashboard' },
+	{ href: '/balances', label: 'Balances' },
+	{ href: '/settings/currencies', label: 'Currency Settings' },
+	{ href: '/chatbot', label: 'Chatbot' },
+];
 ---
 
 <!doctype html>
@@ -15,6 +23,242 @@ const { title = 'Open Money Management' } = Astro.props;
 		<title>{title}</title>
 	</head>
 	<body>
-		<slot />
+		<header class="site-top-nav">
+			<div class="site-top-nav-inner">
+				<a href="/" class="site-logo" aria-label="Open Money home">
+					<span class="site-logo-prefix">$_</span>
+					<span class="site-logo-text">OpenMoneyManagement</span>
+				</a>
+
+				<div class="site-top-nav-right">
+					<nav class="site-main-links" aria-label="Top navigation">
+						{
+							topNavLinks.map((item) => (
+								<a href={item.href} class={`site-main-link ${pathname.startsWith(item.href) ? 'active' : ''}`}>
+									{item.label}
+								</a>
+							))
+						}
+					</nav>
+
+					<button
+						class="site-menu-toggle"
+						id="site-menu-toggle"
+						type="button"
+						aria-label="Toggle navigation menu"
+						aria-expanded="false"
+						aria-controls="site-mobile-menu"
+					>
+						<span></span>
+						<span></span>
+						<span></span>
+					</button>
+				</div>
+			</div>
+
+			<div class="site-mobile-menu" id="site-mobile-menu" hidden>
+				<nav class="site-mobile-links" aria-label="Mobile navigation">
+					{
+						topNavLinks.map((item) => (
+							<a href={item.href} class={`site-mobile-link ${pathname.startsWith(item.href) ? 'active' : ''}`}>
+								{item.label}
+							</a>
+						))
+					}
+				</nav>
+			</div>
+		</header>
+
+		<main class="site-content-wrap">
+			<slot />
+		</main>
 	</body>
 </html>
+
+<script>
+	/**
+	 * Enhances native selects into design-system custom dropdowns while keeping
+	 * the original select element as the single source of truth for forms.
+	 */
+	function enhanceNativeSelect(selectEl: HTMLSelectElement) {
+		if (!selectEl || selectEl.dataset.customized === 'true' || selectEl.dataset.nativeOnly === 'true') {
+			return;
+		}
+
+		const wrapper = document.createElement('div');
+		wrapper.className = 'custom-select';
+
+		const trigger = document.createElement('button');
+		trigger.type = 'button';
+		trigger.className = 'custom-select-trigger';
+		trigger.setAttribute('aria-haspopup', 'listbox');
+		trigger.setAttribute('aria-expanded', 'false');
+
+		const menu = document.createElement('ul');
+		menu.className = 'custom-select-menu';
+		menu.setAttribute('role', 'listbox');
+
+		const parent = selectEl.parentNode;
+		if (!parent) {
+			return;
+		}
+
+		parent.insertBefore(wrapper, selectEl);
+		wrapper.appendChild(selectEl);
+		wrapper.appendChild(trigger);
+		wrapper.appendChild(menu);
+
+		selectEl.classList.add('custom-select-native');
+		selectEl.dataset.customized = 'true';
+
+		function closeMenu() {
+			wrapper.classList.remove('open');
+			trigger.setAttribute('aria-expanded', 'false');
+		}
+
+		function openMenu() {
+			wrapper.classList.add('open');
+			trigger.setAttribute('aria-expanded', 'true');
+		}
+
+		function refreshMenu() {
+			menu.innerHTML = '';
+			const options = Array.from(selectEl.options) as HTMLOptionElement[];
+
+			options.forEach((option) => {
+				const item = document.createElement('li');
+				item.className = 'custom-select-option';
+				item.setAttribute('role', 'option');
+				item.dataset.value = option.value;
+				item.textContent = option.textContent;
+
+				if (option.selected) {
+					item.classList.add('selected');
+				}
+
+				if (option.disabled) {
+					item.classList.add('disabled');
+				}
+
+				item.addEventListener('click', () => {
+					if (option.disabled) {
+						return;
+					}
+
+					selectEl.value = option.value;
+					selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+					closeMenu();
+				});
+
+				menu.appendChild(item);
+			});
+
+			const selectedOption = selectEl.options[selectEl.selectedIndex];
+			trigger.textContent = selectedOption ? selectedOption.textContent : 'Select';
+			trigger.disabled = Boolean(selectEl.disabled);
+		}
+
+		trigger.addEventListener('click', () => {
+			if (wrapper.classList.contains('open')) {
+				closeMenu();
+			} else {
+				document.querySelectorAll('.custom-select.open').forEach((otherWrapper) => {
+					otherWrapper.classList.remove('open');
+					const otherTrigger = otherWrapper.querySelector('.custom-select-trigger');
+					otherTrigger?.setAttribute('aria-expanded', 'false');
+				});
+
+				openMenu();
+			}
+		});
+
+		selectEl.addEventListener('change', refreshMenu);
+
+		const observer = new MutationObserver(refreshMenu);
+		observer.observe(selectEl, { childList: true, subtree: true, attributes: true });
+
+		document.addEventListener('click', (event) => {
+			const target = event.target instanceof Node ? event.target : null;
+			if (!wrapper.contains(target)) {
+				closeMenu();
+			}
+		});
+
+		refreshMenu();
+	}
+
+	// Enhances all selects globally, including dynamically rendered page forms.
+	function bootstrapCustomSelects() {
+		document.querySelectorAll<HTMLSelectElement>('select').forEach((selectEl) => {
+			enhanceNativeSelect(selectEl);
+		});
+	}
+
+	function setupMobileMenu() {
+		const toggleButtonEl = document.getElementById('site-menu-toggle');
+		const mobileMenuEl = document.getElementById('site-mobile-menu');
+
+		if (!(toggleButtonEl instanceof HTMLButtonElement) || !(mobileMenuEl instanceof HTMLDivElement)) {
+			return;
+		}
+
+		const toggleButton = toggleButtonEl;
+		const mobileMenu = mobileMenuEl;
+
+		function closeMenu() {
+			mobileMenu.hidden = true;
+			mobileMenu.classList.remove('open');
+			toggleButton.setAttribute('aria-expanded', 'false');
+			document.body.classList.remove('site-mobile-menu-open');
+		}
+
+		function openMenu() {
+			mobileMenu.hidden = false;
+			mobileMenu.classList.add('open');
+			toggleButton.setAttribute('aria-expanded', 'true');
+			document.body.classList.add('site-mobile-menu-open');
+		}
+
+		toggleButton.addEventListener('click', () => {
+			if (mobileMenu.hidden) {
+				openMenu();
+			} else {
+				closeMenu();
+			}
+		});
+
+		mobileMenu.querySelectorAll('a').forEach((link) => {
+			link.addEventListener('click', () => {
+				closeMenu();
+			});
+		});
+
+		document.addEventListener('click', (event) => {
+			const target = event.target instanceof Node ? event.target : null;
+			if (!target || mobileMenu.hidden) {
+				return;
+			}
+
+			if (!mobileMenu.contains(target) && !toggleButton.contains(target)) {
+				closeMenu();
+			}
+		});
+
+		window.addEventListener('resize', () => {
+			if (window.innerWidth > 900) {
+				closeMenu();
+			}
+		});
+	}
+
+	function bootstrapLayout() {
+		bootstrapCustomSelects();
+		setupMobileMenu();
+	}
+
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', bootstrapLayout);
+	} else {
+		bootstrapLayout();
+	}
+</script>

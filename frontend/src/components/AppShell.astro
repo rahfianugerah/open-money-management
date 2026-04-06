@@ -1,44 +1,57 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import ChatbotWidget from './ChatbotWidget.astro';
 
-const { pageTitle, activePath } = Astro.props;
-
-const navItems = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/balances', label: 'Balances' },
-  { href: '/settings/currencies', label: 'Currency Settings' },
-];
+const { pageTitle } = Astro.props;
 ---
 
 <Layout title={`${pageTitle} | Open Money Management`}>
   <div class="app-shell">
-    <aside class="sidebar card panel">
-      <div class="brand">Open Money</div>
-      <p class="helper-text" style="margin-top: 8px;">Offline money management workspace</p>
-      <nav class="nav-list" aria-label="Main navigation">
-        {
-          navItems.map((item) => (
-            <a href={item.href} class={`nav-item ${activePath === item.href ? 'active' : ''}`}>
-              {item.label}
-            </a>
-          ))
-        }
-      </nav>
-    </aside>
-
     <main class="main-content">
       <header class="topbar card">
         <h1 class="topbar-title">{pageTitle}</h1>
         <div class="topbar-user">
-          <span class="badge">Public Mode</span>
+          <span class="badge" id="auth-username">Loading...</span>
+          <button type="button" id="logout-btn">Logout</button>
         </div>
       </header>
+
       <section class="page-grid">
         <slot />
       </section>
     </main>
   </div>
-
-  <ChatbotWidget />
 </Layout>
+
+<script type="module">
+  import { ensureSession, hasAuthToken, logout } from '/lib/client-api.js';
+
+  const usernameBadge = document.getElementById('auth-username');
+  const logoutButton = document.getElementById('logout-btn');
+
+  // Expose auth readiness to page-level scripts to prevent data-load race conditions.
+  window.__ommAuthReady = (async () => {
+    if (!hasAuthToken()) {
+      window.location.href = '/login';
+      throw new Error('Missing auth token');
+    }
+
+    try {
+      const user = await ensureSession();
+      window.__ommCurrentUser = user;
+
+      if (usernameBadge) {
+        usernameBadge.textContent = user.username;
+      }
+
+      return user;
+    } catch {
+      window.location.href = '/login';
+      throw new Error('Authentication failed');
+    }
+  })();
+
+  logoutButton?.addEventListener('click', async () => {
+    await logout();
+    window.location.href = '/login';
+  });
+</script>

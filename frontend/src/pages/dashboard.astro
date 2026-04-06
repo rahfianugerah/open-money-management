@@ -36,15 +36,15 @@ import AppShell from '../components/AppShell.astro';
       <canvas id="income-expense-chart" aria-label="Income versus expenses chart"></canvas>
     </article>
 
-    <article class="card panel">
+    <article class="card panel quick-actions-card">
       <h3 class="panel-title">Quick Actions</h3>
       <div class="quick-actions" style="margin-bottom: 14px;">
         <a class="btn" href="/balances">Manage Balances</a>
         <a class="btn" href="/settings/currencies">Currency Settings</a>
       </div>
 
-      <form id="transaction-form" class="form-grid">
-        <div class="form-grid columns-2">
+      <form id="transaction-form" class="form-grid quick-actions-form">
+        <div class="form-grid columns-2 quick-row">
           <div class="form-row">
             <label class="field-label" for="tx-type">Transaction Type</label>
             <select id="tx-type" name="type">
@@ -62,7 +62,7 @@ import AppShell from '../components/AppShell.astro';
           </div>
         </div>
 
-        <div class="form-grid columns-2">
+        <div class="form-grid columns-2 quick-row">
           <div class="form-row">
             <label class="field-label" for="tx-amount">Amount</label>
             <input id="tx-amount" name="amount" type="number" class="input" min="0.01" step="0.01" required />
@@ -74,7 +74,7 @@ import AppShell from '../components/AppShell.astro';
           </div>
         </div>
 
-        <div class="form-grid columns-2">
+        <div class="form-grid columns-2 quick-row">
           <div class="form-row" id="tx-reference-amount-row" hidden>
             <label class="field-label" for="tx-reference-amount">Reference Amount</label>
             <input
@@ -87,6 +87,13 @@ import AppShell from '../components/AppShell.astro';
             />
           </div>
 
+          <div class="form-row">
+            <label class="field-label" for="tx-occurred-at">Occurred At (expenses only)</label>
+            <input id="tx-occurred-at" name="occurredAt" type="datetime-local" class="input" />
+          </div>
+        </div>
+
+        <div class="form-grid quick-row">
           <div class="form-row">
             <label class="field-label" for="tx-description">Description</label>
             <input id="tx-description" name="description" class="input" placeholder="Optional note" />
@@ -145,6 +152,7 @@ import AppShell from '../components/AppShell.astro';
   const txReferenceCurrency = document.getElementById('tx-reference-currency');
   const txReferenceAmountRow = document.getElementById('tx-reference-amount-row');
   const txReferenceAmount = document.getElementById('tx-reference-amount');
+  const txOccurredAt = document.getElementById('tx-occurred-at');
   const txDescription = document.getElementById('tx-description');
   const txError = document.getElementById('tx-error');
   const txSuccess = document.getElementById('tx-success');
@@ -177,10 +185,21 @@ import AppShell from '../components/AppShell.astro';
     return `Missing rates: ${missingRates.join(', ')}`;
   }
 
+  function isExpenseType(type) {
+    return type === 'withdrawal' || type === 'transfer_out';
+  }
+
+  // Converts Date to yyyy-MM-ddTHH:mm for datetime-local controls.
+  function toLocalDateTimeInputValue(date = new Date()) {
+    const tzOffsetMs = date.getTimezoneOffset() * 60_000;
+    return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 16);
+  }
+
   function toggleConversionFields() {
     const isConversion = txType.value === 'conversion';
     txReferenceCurrencyRow.hidden = !isConversion;
     txReferenceAmountRow.hidden = !isConversion;
+    txOccurredAt.required = isExpenseType(txType.value);
 
     if (!isConversion) {
       txReferenceCurrency.value = '';
@@ -296,6 +315,27 @@ import AppShell from '../components/AppShell.astro';
     });
   }
 
+  /**
+   * Retries transient startup failures (e.g., backend just restarted) so balances
+   * still appear without forcing a manual refresh.
+   */
+  async function withRetry(taskFn, maxAttempts = 3, delayMs = 300) {
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await taskFn();
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
+    throw lastError;
+  }
+
   async function populateCurrencyOptions() {
     const currencies = await listCurrencies();
 
@@ -311,29 +351,44 @@ import AppShell from '../components/AppShell.astro';
   }
 
   async function refreshDashboard() {
-    const summary = await getDashboardSummary();
+    const summary = await withRetry(() => getDashboardSummary());
+    const balances = Array.isArray(summary?.balances) ? summary.balances : [];
+    const incomeExpense = Array.isArray(summary?.incomeExpense) ? summary.incomeExpense : [];
 
-    totalUsdEl.textContent = formatMoney(summary.totals.usd.total, 'USD');
-    totalUsdMetaEl.textContent = formatMissingRates(summary.totals.usd.missingRates);
+    totalUsdEl.textContent = formatMoney(summary?.totals?.usd?.total, 'USD');
+    totalUsdMetaEl.textContent = formatMissingRates(summary?.totals?.usd?.missingRates || []);
 
-    totalIdrEl.textContent = formatMoney(summary.totals.idr.total, 'IDR');
-    totalIdrMetaEl.textContent = formatMissingRates(summary.totals.idr.missingRates);
+    totalIdrEl.textContent = formatMoney(summary?.totals?.idr?.total, 'IDR');
+    totalIdrMetaEl.textContent = formatMissingRates(summary?.totals?.idr?.missingRates || []);
 
-    balanceCountEl.textContent = String(summary.balances.length);
+    balanceCountEl.textContent = String(balances.length);
 
-    renderBalances(summary.balances);
-    renderIncomeExpenseChart(summary.incomeExpense);
+    renderBalances(balances);
+    renderIncomeExpenseChart(incomeExpense);
   }
 
   transactionForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     showTransactionStatus({});
 
+    const rawOccurredAt = txOccurredAt.value;
+    if (isExpenseType(txType.value) && !rawOccurredAt) {
+      showTransactionStatus({ error: 'occurredAt is required for expense transactions.' });
+      return;
+    }
+
+    const parsedOccurredAt = rawOccurredAt ? new Date(rawOccurredAt) : null;
+    if (rawOccurredAt && Number.isNaN(parsedOccurredAt?.valueOf())) {
+      showTransactionStatus({ error: 'occurredAt must be a valid datetime.' });
+      return;
+    }
+
     const payload = {
       type: txType.value,
       currencyCode: txCurrency.value,
       amount: txAmount.value,
       description: txDescription.value,
+      occurredAt: parsedOccurredAt ? parsedOccurredAt.toISOString() : undefined,
     };
 
     if (txType.value === 'conversion') {
@@ -345,6 +400,7 @@ import AppShell from '../components/AppShell.astro';
       await createTransaction(payload);
       showTransactionStatus({ success: 'Transaction saved successfully.' });
       transactionForm.reset();
+      txOccurredAt.value = toLocalDateTimeInputValue();
       toggleConversionFields();
       await refreshDashboard();
     } catch (error) {
@@ -356,7 +412,12 @@ import AppShell from '../components/AppShell.astro';
   txType?.addEventListener('change', toggleConversionFields);
 
   async function bootstrap() {
+    if (window.__ommAuthReady) {
+      await window.__ommAuthReady;
+    }
+
     await populateCurrencyOptions();
+    txOccurredAt.value = toLocalDateTimeInputValue();
     toggleConversionFields();
     await refreshDashboard();
   }
@@ -372,8 +433,39 @@ import AppShell from '../components/AppShell.astro';
   #income-expense-chart {
     height: 310px;
     width: 100%;
-    border-radius: 16px;
+    border-radius: 8px;
     border: 1px solid #e4ebf5;
     background: #fff;
+  }
+
+  .quick-actions-card,
+  .quick-actions-form,
+  .quick-row,
+  .quick-row .form-row {
+    min-width: 0;
+  }
+
+  .quick-actions-card .quick-actions {
+    align-items: center;
+  }
+
+  .quick-actions-card .quick-actions .btn {
+    text-decoration: none;
+  }
+
+  .quick-actions-card .quick-row.columns-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 1460px) {
+    .quick-actions-card .quick-row.columns-2 {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .quick-actions-card .quick-actions .btn {
+      width: 100%;
+    }
   }
 </style>

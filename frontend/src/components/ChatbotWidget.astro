@@ -1,28 +1,37 @@
-<div class="chatbot-panel card" id="chatbot-panel" aria-live="polite">
+---
+const { mode = 'compact' } = Astro.props;
+---
+
+<div class={`chatbot-widget ${mode === 'page' ? 'chatbot-widget-page' : 'chatbot-widget-compact'}`} id="chatbot-widget" aria-live="polite">
   <div class="chat-header">
-    <strong>Local Finance Assistant</strong>
-    <button type="button" id="chatbot-close-btn">Close</button>
+    <div>
+      <strong>Local Finance Assistant</strong>
+      <p class="helper-text">Chatroom</p>
+    </div>
+    <div class="chat-header-actions">
+      <span class="chat-online">Online</span>
+      <button class="chat-clear-btn" id="chat-clear-btn" type="button">Clear</button>
+    </div>
   </div>
-  <div class="chat-history" id="chat-history"></div>
+
+  <div class="chatbot-body">
+    <div class="chat-history" id="chat-history"></div>
+  </div>
+
   <form class="chat-input" id="chat-form">
     <input class="input" id="chat-input" name="prompt" placeholder="Ask about your finances..." />
     <button class="btn-primary" type="submit">Send</button>
   </form>
 </div>
-<button class="chatbot-fab" id="chatbot-toggle-btn" type="button" aria-label="Toggle chatbot">
-  Chat
-</button>
 
 <script type="module">
   import { askChatbot, ApiError } from '/lib/client-api.js';
 
   const STORAGE_KEY = 'omm-chat-history-v1';
-  const toggleButton = document.getElementById('chatbot-toggle-btn');
-  const closeButton = document.getElementById('chatbot-close-btn');
-  const panel = document.getElementById('chatbot-panel');
   const historyEl = document.getElementById('chat-history');
   const chatForm = document.getElementById('chat-form');
   const chatInput = document.getElementById('chat-input');
+  const clearButton = document.getElementById('chat-clear-btn');
 
   function loadHistory() {
     try {
@@ -46,40 +55,99 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(-40)));
   }
 
+  function toReadableTime(value) {
+    return new Date(value).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  function makeMessage(role, content) {
+    return {
+      role,
+      content,
+      sentAt: new Date().toISOString(),
+    };
+  }
+
   function renderMessage(message) {
-    const row = document.createElement('div');
-    row.className = `chat-bubble ${message.role === 'user' ? 'user' : 'assistant'}`;
-    row.textContent = message.content;
+    const row = document.createElement('article');
+    row.className = `chat-message ${message.role === 'user' ? 'user' : 'assistant'}`;
+
+    const meta = document.createElement('div');
+    meta.className = 'chat-meta';
+
+    const role = document.createElement('span');
+    role.className = 'chat-role';
+    role.textContent = message.role === 'user' ? 'You' : 'Assistant';
+
+    const time = document.createElement('span');
+    time.className = 'chat-time';
+    time.textContent = toReadableTime(message.sentAt ?? new Date().toISOString());
+
+    meta.appendChild(role);
+    meta.appendChild(time);
+
+    const bubble = document.createElement('div');
+    bubble.className = `chat-bubble ${message.role === 'user' ? 'user' : 'assistant'}`;
+    bubble.textContent = message.content;
+
+    row.appendChild(meta);
+    row.appendChild(bubble);
     historyEl.appendChild(row);
     historyEl.scrollTop = historyEl.scrollHeight;
+  }
+
+  function renderTyping() {
+    const row = document.createElement('article');
+    row.className = 'chat-message assistant';
+    row.id = 'chat-typing-row';
+
+    const meta = document.createElement('div');
+    meta.className = 'chat-meta';
+    meta.innerHTML = '<span class="chat-role">Assistant</span><span class="chat-time">typing...</span>';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble assistant';
+    bubble.innerHTML = '<span class="chat-typing-dot"></span><span class="chat-typing-dot"></span><span class="chat-typing-dot"></span>';
+
+    row.appendChild(meta);
+    row.appendChild(bubble);
+    historyEl.appendChild(row);
+    historyEl.scrollTop = historyEl.scrollHeight;
+  }
+
+  function clearTyping() {
+    const typingRow = document.getElementById('chat-typing-row');
+    typingRow?.remove();
   }
 
   function renderHistory(history) {
     historyEl.innerHTML = '';
     history.forEach(renderMessage);
+
+    if (history.length === 0) {
+      renderMessage({
+        role: 'assistant',
+        content: 'Chatroom ready. Ask about budgeting, transactions, or conversion strategies.',
+        sentAt: new Date().toISOString(),
+      });
+    }
   }
 
-  let history = loadHistory();
+  let history = loadHistory().map((entry) => ({
+    ...entry,
+    sentAt: entry.sentAt ?? new Date().toISOString(),
+  }));
+
   renderHistory(history);
 
-  function openPanel() {
-    panel.classList.add('open');
+  clearButton?.addEventListener('click', () => {
+    history = [];
+    saveHistory(history);
+    renderHistory(history);
     chatInput.focus();
-  }
-
-  function closePanel() {
-    panel.classList.remove('open');
-  }
-
-  toggleButton?.addEventListener('click', () => {
-    if (panel.classList.contains('open')) {
-      closePanel();
-    } else {
-      openPanel();
-    }
   });
-
-  closeButton?.addEventListener('click', closePanel);
 
   chatForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -89,13 +157,14 @@
       return;
     }
 
-    const userMessage = { role: 'user', content: prompt };
+    const userMessage = makeMessage('user', prompt);
     history.push(userMessage);
     renderMessage(userMessage);
     saveHistory(history);
 
     chatInput.value = '';
     chatInput.disabled = true;
+    renderTyping();
 
     try {
       const response = await askChatbot({
@@ -103,8 +172,9 @@
         history: history.slice(-20),
       });
 
-      const assistantMessage = { role: 'assistant', content: response.text };
+      const assistantMessage = makeMessage('assistant', response.text);
       history.push(assistantMessage);
+      clearTyping();
       renderMessage(assistantMessage);
       saveHistory(history);
     } catch (error) {
@@ -113,11 +183,13 @@
           ? `Chatbot request failed: ${error.message}`
           : 'Unable to contact local chatbot service.';
 
-      const assistantMessage = { role: 'assistant', content: fallback };
+      const assistantMessage = makeMessage('assistant', fallback);
       history.push(assistantMessage);
+      clearTyping();
       renderMessage(assistantMessage);
       saveHistory(history);
     } finally {
+      clearTyping();
       chatInput.disabled = false;
       chatInput.focus();
     }

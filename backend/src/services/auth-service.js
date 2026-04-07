@@ -1,9 +1,10 @@
+const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
 const env = require('../config/env');
 const AppError = require('../utils/app-error');
 const { requireNonEmptyString } = require('../utils/validation');
 const userRepository = require('../repositories/user-repository');
+const sessionRepository = require('../repositories/session-repository');
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -33,19 +34,10 @@ function toPublicUser(user) {
 }
 
 /**
- * Signs a JWT token used as bearer auth by frontend modules.
+ * Generates an opaque session token (96 hex characters).
  */
-function signAccessToken(user) {
-  return jwt.sign(
-    {
-      sub: user.id,
-      username: user.username,
-    },
-    env.auth.jwtSecret,
-    {
-      expiresIn: env.auth.tokenTtl,
-    }
-  );
+function generateSessionToken() {
+  return crypto.randomBytes(48).toString('hex');
 }
 
 /**
@@ -90,42 +82,56 @@ async function login({ username, password }) {
     throw new AppError('Invalid username or password', 401);
   }
 
+  const token = generateSessionToken();
+  const expiresAt = new Date(Date.now() + env.auth.sessionTtlDays * 86_400_000);
+
+  await sessionRepository.createSession({
+    userId: user.id,
+    token,
+    expiresAt,
+  });
+
   return {
-    token: signAccessToken(user),
+    token,
     user: toPublicUser(user),
   };
 }
 
 /**
- * Resolves current user from bearer token.
- * Edge case: expired/invalid tokens return null to simplify middleware branching.
+ * Resolves current user from session token.
+ * Expired or unknown tokens return null to simplify middleware branching.
  */
 async function getSessionUser(token) {
   if (!token) {
     return null;
   }
 
-  try {
-    const payload = jwt.verify(token, env.auth.jwtSecret);
-    const userId = payload?.sub;
-
-    if (!userId || typeof userId !== 'string') {
-      return null;
-    }
-
-    const user = await userRepository.findById(userId);
-    if (!user) {
-      return null;
-    }
-
-    return toPublicUser(user);
-  } catch {
+  const session = await sessionRepository.findSessionByToken(token);
+  if (!session) {
     return null;
   }
+
+  if (new Date(session.expires_at) <= new Date()) {
+    await sessionRepository.deleteSessionByToken(token);
+    return null;
+  }
+
+  return {
+    id: session.user_id,
+    username: session.username,
+  };
+}
+
+/**
+ * Invalidates the session associated with the given token.
+ */
+async function logout(token) {
+  await sessionRepository.deleteSessionByToken(token);
 }
 
 module.exports = {
   register,
   login,
   getSessionUser,
+  logout,
 };

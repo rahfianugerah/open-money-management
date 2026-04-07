@@ -21,10 +21,9 @@ const env = {
   isProduction: process.env.NODE_ENV === 'production',
   port: toInt(process.env.PORT, 3000),
 
-  // JWT auth settings used by login/session verification.
+  // Session auth settings used by login/session verification.
   auth: {
-    jwtSecret: process.env.AUTH_JWT_SECRET || 'replace-with-a-secure-secret',
-    tokenTtl: process.env.AUTH_TOKEN_TTL || '12h',
+    sessionTtlDays: toInt(process.env.AUTH_SESSION_TTL_DAYS, 90),
   },
 
   db: {

@@ -33,9 +33,12 @@ async function session(req, res) {
 }
 
 /**
- * Stateless logout for JWT: frontend clears token, API confirms intent.
+ * Invalidates the server-side session, then confirms logout.
  */
 async function logout(req, res) {
+  const token = readBearerToken(req);
+  await authService.logout(token);
+
   res.status(200).json({
     data: {
       message: 'Logged out',

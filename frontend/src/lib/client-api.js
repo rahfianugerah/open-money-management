@@ -214,8 +214,25 @@ export async function createTransaction(payload) {
   });
 }
 
+export async function updateTransaction(transactionId, payload) {
+  return apiRequest(`/api/transactions/${transactionId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteTransaction(transactionId) {
+  return apiRequest(`/api/transactions/${transactionId}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function getIncomeExpenseSummary(months = 6) {
   return apiRequest(`/api/transactions/summary/income-expense?months=${months}`);
+}
+
+export async function getOhlcSummary(months = 6) {
+  return apiRequest(`/api/transactions/summary/ohlc?months=${months}`);
 }
 
 export async function askChatbot(payload) {

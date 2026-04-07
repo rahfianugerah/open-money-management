@@ -1,0 +1,457 @@
+---
+import AppShell from '../components/AppShell.astro';
+---
+
+<AppShell pageTitle="Analytics" activePath="/charts">
+  <section class="hero-strip">
+    <h2 style="font-size: 1.35rem;">Money Management Analytics</h2>
+    <p class="helper-text" style="margin-top: 8px;">
+      Dedicated visual analytics using vertical bar, pie, line, and candlestick charts.
+    </p>
+  </section>
+
+  <section class="card panel">
+    <div class="section-header section-header-spread" style="margin-bottom: 12px;">
+      <div>
+        <h3 class="panel-title panel-title-tight">Chart Controls</h3>
+        <p class="helper-text">Refresh charts after creating or editing transactions.</p>
+      </div>
+      <button type="button" id="charts-refresh-btn">Refresh Charts</button>
+    </div>
+
+    <p id="charts-error" class="error-text" hidden></p>
+    <p id="charts-success" class="success-text" hidden></p>
+  </section>
+
+  <section class="grid-2">
+    <article class="card panel">
+      <h3 class="panel-title">Income vs Expenses (Vertical Bar)</h3>
+      <p class="helper-text" style="margin-bottom: 10px;">Monthly comparison for the last 6 months.</p>
+      <div class="analysis-chart-wrap">
+        <canvas id="analysis-bar-chart" aria-label="Income vs expense bar chart" role="img"></canvas>
+      </div>
+    </article>
+
+    <article class="card panel">
+      <h3 class="panel-title">Transaction Mix (Pie)</h3>
+      <p class="helper-text" style="margin-bottom: 10px;">Distribution by transaction type using amount totals.</p>
+      <div class="analysis-chart-wrap">
+        <canvas id="analysis-pie-chart" aria-label="Transaction mix pie chart" role="img"></canvas>
+      </div>
+    </article>
+  </section>
+
+  <section class="card panel">
+    <h3 class="panel-title">Net Cashflow Trend (Line)</h3>
+    <p class="helper-text" style="margin-bottom: 10px;">
+      Monthly net flow and cumulative trend to track momentum over time.
+    </p>
+    <div class="analysis-chart-wrap analysis-chart-wrap-line">
+      <canvas id="analysis-line-chart" aria-label="Net flow line chart" role="img"></canvas>
+    </div>
+  </section>
+
+  <section class="card panel">
+    <h3 class="panel-title">Balance K-Line (Candlestick)</h3>
+    <p class="helper-text" style="margin-bottom: 10px;">
+      Monthly OHLC view of your net balance — open, high, low, close derived from income and expense flows.
+    </p>
+    <div class="analysis-chart-wrap analysis-chart-wrap-line">
+      <canvas id="analysis-kline-chart" aria-label="Balance candlestick chart" role="img"></canvas>
+    </div>
+  </section>
+</AppShell>
+
+<script>
+  // @ts-nocheck
+  import Chart from 'chart.js/auto';
+  import { ApiError, getDashboardSummary, listTransactions, getOhlcSummary } from '../lib/client-api.js';
+
+  const TRANSACTION_TYPE_LABELS = {
+    deposit: 'Deposit',
+    withdrawal: 'Withdrawal',
+    transfer_in: 'Transfer In',
+    transfer_out: 'Transfer Out',
+    conversion: 'Conversion',
+  };
+
+  const COLORS = {
+    income: '#8bc5ff',
+    expense: '#ffc9c2',
+    net: '#8ecae6',
+    cumulative: '#2563eb',
+    pie: ['#8bc5ff', '#ffc9c2', '#c7f9cc', '#fde68a', '#d8b4fe'],
+  };
+
+  const chartsError = document.getElementById('charts-error');
+  const chartsSuccess = document.getElementById('charts-success');
+  const refreshButton = document.getElementById('charts-refresh-btn');
+
+  const barCanvas = document.getElementById('analysis-bar-chart');
+  const pieCanvas = document.getElementById('analysis-pie-chart');
+  const lineCanvas = document.getElementById('analysis-line-chart');
+  const klineCanvas = document.getElementById('analysis-kline-chart');
+
+  let barChart = null;
+  let pieChart = null;
+  let lineChart = null;
+
+  function showStatus({ error = '', success = '' }) {
+    chartsError.hidden = !error;
+    chartsSuccess.hidden = !success;
+    chartsError.textContent = error;
+    chartsSuccess.textContent = success;
+  }
+
+  function formatCompactNumber(value) {
+    return new Intl.NumberFormat('en-US', {
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    }).format(Number(value) || 0);
+  }
+
+  function getTypeLabel(type) {
+    return TRANSACTION_TYPE_LABELS[type] || type;
+  }
+
+  function destroyChart(chart) {
+    if (chart) {
+      chart.destroy();
+    }
+  }
+
+  function renderBarChart(incomeExpense) {
+    const rows = Array.isArray(incomeExpense) ? incomeExpense : [];
+    const labels = rows.map((item) => item.label);
+    const incomeValues = rows.map((item) => Number(item?.income) || 0);
+    const expenseValues = rows.map((item) => Number(item?.expense) || 0);
+
+    destroyChart(barChart);
+
+    barChart = new Chart(barCanvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Income',
+            data: incomeValues,
+            backgroundColor: COLORS.income,
+            borderColor: '#5ea9f3',
+            borderWidth: 1,
+            borderRadius: 8,
+            maxBarThickness: 42,
+          },
+          {
+            label: 'Expense',
+            data: expenseValues,
+            backgroundColor: COLORS.expense,
+            borderColor: '#f5a197',
+            borderWidth: 1,
+            borderRadius: 8,
+            maxBarThickness: 42,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+          },
+        },
+        scales: {
+          x: {
+            grid: {
+              display: false,
+            },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (value) => formatCompactNumber(value),
+            },
+          },
+        },
+      },
+    });
+  }
+
+  function renderPieChart(transactions) {
+    const rows = Array.isArray(transactions) ? transactions : [];
+    const totalsByType = new Map();
+
+    for (const transaction of rows) {
+      const type = transaction?.type || 'other';
+      const amount = Math.abs(Number(transaction?.amount) || 0);
+      totalsByType.set(type, (totalsByType.get(type) || 0) + amount);
+    }
+
+    if (totalsByType.size === 0) {
+      totalsByType.set('no_data', 1);
+    }
+
+    const entries = Array.from(totalsByType.entries());
+    const labels = entries.map(([type]) => (type === 'no_data' ? 'No Data' : getTypeLabel(type)));
+    const values = entries.map(([, amount]) => amount);
+
+    destroyChart(pieChart);
+
+    pieChart = new Chart(pieCanvas, {
+      type: 'pie',
+      data: {
+        labels,
+        datasets: [
+          {
+            data: values,
+            backgroundColor: COLORS.pie.slice(0, Math.max(values.length, 1)),
+            borderColor: '#ffffff',
+            borderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const label = context.label || 'Type';
+                const value = Number(context.parsed || 0).toLocaleString('en-US');
+                return `${label}: ${value}`;
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  function renderLineChart(incomeExpense) {
+    const rows = Array.isArray(incomeExpense) ? incomeExpense : [];
+    const labels = rows.map((item) => item.label);
+    const netFlow = rows.map((item) => (Number(item?.income) || 0) - (Number(item?.expense) || 0));
+
+    const cumulativeFlow = [];
+    let runningTotal = 0;
+    for (const value of netFlow) {
+      runningTotal += value;
+      cumulativeFlow.push(runningTotal);
+    }
+
+    destroyChart(lineChart);
+
+    lineChart = new Chart(lineCanvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Monthly Net Flow',
+            data: netFlow,
+            borderColor: COLORS.net,
+            backgroundColor: 'rgba(142, 202, 230, 0.25)',
+            fill: true,
+            tension: 0.3,
+          },
+          {
+            label: 'Cumulative Net Flow',
+            data: cumulativeFlow,
+            borderColor: COLORS.cumulative,
+            backgroundColor: 'rgba(37, 99, 235, 0.05)',
+            fill: false,
+            tension: 0.25,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+          },
+        },
+        scales: {
+          y: {
+            ticks: {
+              callback: (value) => formatCompactNumber(value),
+            },
+          },
+        },
+      },
+    });
+  }
+
+  function drawCandlestickChart(canvas, ohlcRows) {
+    const rows = Array.isArray(ohlcRows) ? ohlcRows : [];
+    if (!canvas || rows.length === 0) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const container = canvas.parentElement;
+    const width = container.offsetWidth;
+    const height = container.offsetHeight;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const paddingLeft = 60;
+    const paddingRight = 20;
+    const paddingTop = 20;
+    const paddingBottom = 40;
+    const chartW = width - paddingLeft - paddingRight;
+    const chartH = height - paddingTop - paddingBottom;
+
+    const allValues = rows.flatMap((r) => [r.open, r.high, r.low, r.close]);
+    let minVal = Math.min(...allValues);
+    let maxVal = Math.max(...allValues);
+    const range = maxVal - minVal || 1;
+    minVal -= range * 0.05;
+    maxVal += range * 0.05;
+    const totalRange = maxVal - minVal;
+
+    function yPos(value) {
+      return paddingTop + chartH - ((value - minVal) / totalRange) * chartH;
+    }
+
+    // Clear
+    ctx.clearRect(0, 0, width, height);
+
+    // Grid lines + Y-axis labels
+    ctx.strokeStyle = '#e4ebf5';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = '#64748b';
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    const gridSteps = 5;
+    for (let i = 0; i <= gridSteps; i++) {
+      const val = minVal + (totalRange / gridSteps) * i;
+      const y = yPos(val);
+      ctx.beginPath();
+      ctx.moveTo(paddingLeft, y);
+      ctx.lineTo(width - paddingRight, y);
+      ctx.stroke();
+      ctx.fillText(formatCompactNumber(val), paddingLeft - 8, y + 4);
+    }
+
+    // Candles
+    const candleSpacing = chartW / rows.length;
+    const bodyWidth = Math.max(candleSpacing * 0.5, 6);
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const centerX = paddingLeft + candleSpacing * i + candleSpacing / 2;
+      const isGreen = r.close >= r.open;
+      const color = isGreen ? '#16a34a' : '#dc2626';
+
+      // Wick
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(centerX, yPos(r.high));
+      ctx.lineTo(centerX, yPos(r.low));
+      ctx.stroke();
+
+      // Body
+      const bodyTop = yPos(Math.max(r.open, r.close));
+      const bodyBottom = yPos(Math.min(r.open, r.close));
+      const bodyH = Math.max(bodyBottom - bodyTop, 1);
+      ctx.fillStyle = color;
+      ctx.fillRect(centerX - bodyWidth / 2, bodyTop, bodyWidth, bodyH);
+
+      // X-axis label
+      ctx.fillStyle = '#64748b';
+      ctx.textAlign = 'center';
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.fillText(r.label || '', centerX, height - paddingBottom + 18);
+    }
+  }
+
+  async function loadCharts() {
+    showStatus({});
+
+    const [summary, transactions] = await Promise.all([
+      getDashboardSummary(),
+      listTransactions(500),
+    ]);
+    const incomeExpense = Array.isArray(summary?.incomeExpense) ? summary.incomeExpense : [];
+
+    renderBarChart(incomeExpense);
+    renderPieChart(Array.isArray(transactions) ? transactions : []);
+    renderLineChart(incomeExpense);
+
+    // Load K-line independently so a failure never blocks the other three charts.
+    try {
+      const ohlcData = await getOhlcSummary(6);
+      drawCandlestickChart(klineCanvas, Array.isArray(ohlcData) ? ohlcData : []);
+    } catch (ohlcError) {
+      const msg = ohlcError instanceof ApiError ? ohlcError.message : 'Could not load K-line data.';
+      const klineWrap = klineCanvas?.parentElement;
+      if (klineWrap) {
+        klineWrap.innerHTML = `<p class="helper-text" style="padding:12px;">${msg}</p>`;
+      }
+    }
+  }
+
+  refreshButton?.addEventListener('click', async () => {
+    try {
+      await loadCharts();
+      showStatus({ success: 'Chart data refreshed successfully.' });
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Failed to refresh chart data.';
+      showStatus({ error: message });
+    }
+  });
+
+  async function bootstrap() {
+    if (window.__ommAuthReady) {
+      await window.__ommAuthReady;
+    }
+
+    await loadCharts();
+  }
+
+  bootstrap().catch((error) => {
+    const message = error instanceof ApiError ? error.message : 'Failed to load chart analysis.';
+    showStatus({ error: message });
+  });
+</script>
+
+<style>
+  :global(.analysis-chart-wrap) {
+    border: 1px solid #e4ebf5;
+    border-radius: 8px;
+    background: #ffffff;
+    min-height: 320px;
+    height: 320px;
+    padding: 12px;
+  }
+
+  :global(.analysis-chart-wrap-line) {
+    min-height: 360px;
+    height: 360px;
+  }
+
+  :global(.analysis-chart-wrap canvas) {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  @media (max-width: 640px) {
+    :global(.analysis-chart-wrap),
+    :global(.analysis-chart-wrap-line) {
+      min-height: 280px;
+      height: 280px;
+      padding: 10px;
+    }
+  }
+</style>

@@ -11,13 +11,13 @@ import AppShell from '../components/AppShell.astro';
   </section>
 
   <section class="grid-3" id="stat-cards">
-    <article class="card panel">
+    <article class="card panel" style="border-left: 4px solid #2563eb;">
       <h3 class="panel-title">Total in USD</h3>
       <div class="stat-value" id="total-usd">$0.00</div>
       <p class="stat-caption" id="total-usd-meta">Awaiting rates</p>
     </article>
 
-    <article class="card panel">
+    <article class="card panel" style="border-left: 4px solid #16a34a;">
       <h3 class="panel-title">Total in IDR</h3>
       <div class="stat-value" id="total-idr">Rp0</div>
       <p class="stat-caption" id="total-idr-meta">Awaiting rates</p>
@@ -33,7 +33,12 @@ import AppShell from '../components/AppShell.astro';
   <section class="grid-2">
     <article class="card panel">
       <h3 class="panel-title">Income vs Expenses (Last 6 Months)</h3>
-      <canvas id="income-expense-chart" aria-label="Income versus expenses chart"></canvas>
+      <p class="helper-text" id="income-expense-caption" style="margin-top: -2px; margin-bottom: 10px;">
+        Loading chart data...
+      </p>
+      <div class="dashboard-chart-wrap">
+        <canvas id="income-expense-chart" aria-label="Income and expense chart" role="img"></canvas>
+      </div>
     </article>
 
     <article class="card panel quick-actions-card">
@@ -41,6 +46,7 @@ import AppShell from '../components/AppShell.astro';
       <div class="quick-actions" style="margin-bottom: 14px;">
         <a class="btn" href="/balances">Manage Balances</a>
         <a class="btn" href="/settings/currencies">Currency Settings</a>
+        <a class="btn" href="/charts">Chart Analysis</a>
       </div>
 
       <form id="transaction-form" class="form-grid quick-actions-form">
@@ -126,16 +132,149 @@ import AppShell from '../components/AppShell.astro';
       </table>
     </div>
   </section>
+
+  <section class="card panel">
+    <div class="section-header section-header-spread" style="margin-bottom: 14px;">
+      <div>
+        <h3 class="panel-title panel-title-tight">Transaction History</h3>
+        <p class="helper-text">
+          Review and correct transactions with edit, delete, and undo. Showing up to 5000 latest records.
+        </p>
+      </div>
+    </div>
+
+    <div class="table-wrap transaction-history-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Occurred At</th>
+            <th>Type</th>
+            <th>Currency</th>
+            <th>Amount</th>
+            <th>Reference</th>
+            <th>Description</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="transaction-history-body"></tbody>
+      </table>
+    </div>
+
+    <div class="inline-actions" id="tx-history-undo-wrap" hidden style="margin-top: 12px;">
+      <span class="helper-text" id="tx-history-undo-text"></span>
+      <button type="button" id="tx-history-undo-btn">Undo Delete</button>
+    </div>
+
+    <p class="error-text" id="tx-history-error" hidden></p>
+    <p class="success-text" id="tx-history-success" hidden></p>
+  </section>
+
+  <dialog id="tx-history-dialog">
+    <form id="tx-history-form" method="dialog">
+      <header class="dialog-header">
+        <strong id="tx-history-dialog-title">Edit Transaction</strong>
+        <button type="button" id="tx-history-dialog-close">Close</button>
+      </header>
+
+      <div class="dialog-body form-grid">
+        <input type="hidden" id="tx-history-id" name="transactionId" />
+
+        <div class="form-grid columns-2">
+          <div class="form-row">
+            <label class="field-label" for="tx-history-type">Transaction Type</label>
+            <select id="tx-history-type" name="type">
+              <option value="deposit">Deposit</option>
+              <option value="withdrawal">Withdrawal</option>
+              <option value="transfer_in">Transfer In</option>
+              <option value="transfer_out">Transfer Out</option>
+              <option value="conversion">Conversion</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <label class="field-label" for="tx-history-currency">Currency</label>
+            <select id="tx-history-currency" name="currencyCode"></select>
+          </div>
+        </div>
+
+        <div class="form-grid columns-2">
+          <div class="form-row">
+            <label class="field-label" for="tx-history-amount">Amount</label>
+            <input
+              id="tx-history-amount"
+              name="amount"
+              type="number"
+              class="input"
+              min="0.01"
+              step="0.01"
+              required
+            />
+          </div>
+
+          <div class="form-row" id="tx-history-reference-currency-row" hidden>
+            <label class="field-label" for="tx-history-reference-currency">Reference Currency</label>
+            <select id="tx-history-reference-currency" name="referenceCurrencyCode"></select>
+          </div>
+        </div>
+
+        <div class="form-grid columns-2">
+          <div class="form-row" id="tx-history-reference-amount-row" hidden>
+            <label class="field-label" for="tx-history-reference-amount">Reference Amount</label>
+            <input
+              id="tx-history-reference-amount"
+              name="referenceAmount"
+              type="number"
+              class="input"
+              min="0.01"
+              step="0.01"
+            />
+          </div>
+
+          <div class="form-row">
+            <label class="field-label" for="tx-history-occurred-at">Occurred At (expenses only)</label>
+            <input id="tx-history-occurred-at" name="occurredAt" type="datetime-local" class="input" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label class="field-label" for="tx-history-description">Description</label>
+          <input id="tx-history-description" name="description" class="input" placeholder="Optional note" />
+        </div>
+
+        <p class="error-text" id="tx-history-form-error" hidden></p>
+      </div>
+
+      <footer class="dialog-footer">
+        <button type="button" id="tx-history-dialog-cancel">Cancel</button>
+        <button type="submit" class="btn-primary">Save Changes</button>
+      </footer>
+    </form>
+  </dialog>
 </AppShell>
 
-<script type="module">
+<script>
+  // @ts-nocheck
   import Chart from 'chart.js/auto';
   import {
     ApiError,
     getDashboardSummary,
     listCurrencies,
+    listTransactions,
     createTransaction,
-  } from '/lib/client-api.js';
+    updateTransaction,
+    deleteTransaction,
+  } from '../lib/client-api.js';
+
+  const HISTORY_FETCH_LIMIT = 5000;
+  const HISTORY_UNDO_WINDOW_MS = 30_000;
+
+  const TRANSACTION_TYPE_LABELS = {
+    deposit: 'Deposit',
+    withdrawal: 'Withdrawal',
+    transfer_in: 'Transfer In',
+    transfer_out: 'Transfer Out',
+    conversion: 'Conversion',
+  };
 
   const totalUsdEl = document.getElementById('total-usd');
   const totalUsdMetaEl = document.getElementById('total-usd-meta');
@@ -156,14 +295,50 @@ import AppShell from '../components/AppShell.astro';
   const txDescription = document.getElementById('tx-description');
   const txError = document.getElementById('tx-error');
   const txSuccess = document.getElementById('tx-success');
+
+  const incomeExpenseCaption = document.getElementById('income-expense-caption');
   const incomeExpenseCanvas = document.getElementById('income-expense-chart');
-  let incomeExpenseChart = null;
+
+  const txHistoryBody = document.getElementById('transaction-history-body');
+  const txHistoryError = document.getElementById('tx-history-error');
+  const txHistorySuccess = document.getElementById('tx-history-success');
+  const txHistoryUndoWrap = document.getElementById('tx-history-undo-wrap');
+  const txHistoryUndoText = document.getElementById('tx-history-undo-text');
+  const txHistoryUndoBtn = document.getElementById('tx-history-undo-btn');
+
+  const txHistoryDialog = document.getElementById('tx-history-dialog');
+  const txHistoryDialogClose = document.getElementById('tx-history-dialog-close');
+  const txHistoryDialogCancel = document.getElementById('tx-history-dialog-cancel');
+  const txHistoryForm = document.getElementById('tx-history-form');
+  const txHistoryId = document.getElementById('tx-history-id');
+  const txHistoryType = document.getElementById('tx-history-type');
+  const txHistoryCurrency = document.getElementById('tx-history-currency');
+  const txHistoryAmount = document.getElementById('tx-history-amount');
+  const txHistoryReferenceCurrencyRow = document.getElementById('tx-history-reference-currency-row');
+  const txHistoryReferenceCurrency = document.getElementById('tx-history-reference-currency');
+  const txHistoryReferenceAmountRow = document.getElementById('tx-history-reference-amount-row');
+  const txHistoryReferenceAmount = document.getElementById('tx-history-reference-amount');
+  const txHistoryOccurredAt = document.getElementById('tx-history-occurred-at');
+  const txHistoryDescription = document.getElementById('tx-history-description');
+  const txHistoryFormError = document.getElementById('tx-history-form-error');
+
+  let dashboardChart = null;
+  let dashboardTransactions = [];
+  let deletedTransactionSnapshot = null;
+  let undoTimerId = null;
 
   function formatMoney(value, currencyCode) {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currencyCode,
       maximumFractionDigits: currencyCode === 'IDR' ? 0 : 2,
+    }).format(Number(value) || 0);
+  }
+
+  function formatCompactNumber(value) {
+    return new Intl.NumberFormat('en-US', {
+      notation: 'compact',
+      maximumFractionDigits: 1,
     }).format(Number(value) || 0);
   }
 
@@ -175,6 +350,15 @@ import AppShell from '../components/AppShell.astro';
       hour: '2-digit',
       minute: '2-digit',
     });
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
   }
 
   function formatMissingRates(missingRates) {
@@ -189,10 +373,52 @@ import AppShell from '../components/AppShell.astro';
     return type === 'withdrawal' || type === 'transfer_out';
   }
 
+  function typeLabel(type) {
+    return TRANSACTION_TYPE_LABELS[type] || type;
+  }
+
   // Converts Date to yyyy-MM-ddTHH:mm for datetime-local controls.
   function toLocalDateTimeInputValue(date = new Date()) {
     const tzOffsetMs = date.getTimezoneOffset() * 60_000;
     return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 16);
+  }
+
+  function toDateTimeInputFromIso(value) {
+    if (!value) {
+      return '';
+    }
+
+    const parsedDate = new Date(value);
+    if (Number.isNaN(parsedDate.valueOf())) {
+      return '';
+    }
+
+    return toLocalDateTimeInputValue(parsedDate);
+  }
+
+  function showTransactionStatus({ error = '', success = '' }) {
+    txError.hidden = !error;
+    txSuccess.hidden = !success;
+    txError.textContent = error;
+    txSuccess.textContent = success;
+  }
+
+  function showHistoryStatus({ error = '', success = '' }) {
+    txHistoryError.hidden = !error;
+    txHistorySuccess.hidden = !success;
+    txHistoryError.textContent = error;
+    txHistorySuccess.textContent = success;
+  }
+
+  function showHistoryFormError(message = '') {
+    txHistoryFormError.hidden = !message;
+    txHistoryFormError.textContent = message;
+  }
+
+  function showChartCaption(text) {
+    if (incomeExpenseCaption) {
+      incomeExpenseCaption.textContent = text;
+    }
   }
 
   function toggleConversionFields() {
@@ -207,11 +433,16 @@ import AppShell from '../components/AppShell.astro';
     }
   }
 
-  function showTransactionStatus({ error = '', success = '' }) {
-    txError.hidden = !error;
-    txSuccess.hidden = !success;
-    txError.textContent = error;
-    txSuccess.textContent = success;
+  function toggleHistoryConversionFields() {
+    const isConversion = txHistoryType.value === 'conversion';
+    txHistoryReferenceCurrencyRow.hidden = !isConversion;
+    txHistoryReferenceAmountRow.hidden = !isConversion;
+    txHistoryOccurredAt.required = isExpenseType(txHistoryType.value);
+
+    if (!isConversion) {
+      txHistoryReferenceCurrency.value = '';
+      txHistoryReferenceAmount.value = '';
+    }
   }
 
   function renderBalances(balances) {
@@ -225,56 +456,98 @@ import AppShell from '../components/AppShell.astro';
       .map(
         (balance) => `
           <tr>
-            <td>${balance.currency_code}</td>
-            <td>${balance.currency_name}</td>
-            <td>${formatMoney(balance.balance, balance.currency_code)}</td>
-            <td>${formatDate(balance.updated_at)}</td>
+            <td>${escapeHtml(balance.currency_code)}</td>
+            <td>${escapeHtml(balance.currency_name)}</td>
+            <td>${escapeHtml(formatMoney(balance.balance, balance.currency_code))}</td>
+            <td>${escapeHtml(formatDate(balance.updated_at))}</td>
           </tr>
         `
       )
       .join('');
   }
 
-  function renderIncomeExpenseChart(data) {
+  function destroyDashboardChart() {
+    if (dashboardChart) {
+      dashboardChart.destroy();
+      dashboardChart = null;
+    }
+  }
+
+  function renderIncomeExpenseChart({ incomeExpense, balances }) {
     if (!incomeExpenseCanvas) {
       return;
     }
 
-    const normalizedData = Array.isArray(data) ? data : [];
-    const labels = normalizedData.map((item) => item.label);
-    const income = normalizedData.map((item) => Number(item.income) || 0);
-    const expense = normalizedData.map((item) => Number(item.expense) || 0);
+    const normalizedIncomeExpense = Array.isArray(incomeExpense) ? incomeExpense : [];
+    const normalizedBalances = Array.isArray(balances) ? balances : [];
 
-    if (incomeExpenseChart) {
-      incomeExpenseChart.data.labels = labels;
-      incomeExpenseChart.data.datasets[0].data = income;
-      incomeExpenseChart.data.datasets[1].data = expense;
-      incomeExpenseChart.update();
-      return;
+    const hasIncomeExpenseActivity = normalizedIncomeExpense.some(
+      (item) => Number(item?.income) > 0 || Number(item?.expense) > 0
+    );
+
+    let labels = [];
+    let datasets = [];
+
+    if (hasIncomeExpenseActivity) {
+      labels = normalizedIncomeExpense.map((item) => item.label);
+      datasets = [
+        {
+          label: 'Income',
+          data: normalizedIncomeExpense.map((item) => Number(item?.income) || 0),
+          backgroundColor: '#8bc5ff',
+          borderColor: '#5ea9f3',
+          borderWidth: 1,
+          borderRadius: 8,
+          maxBarThickness: 42,
+        },
+        {
+          label: 'Expense',
+          data: normalizedIncomeExpense.map((item) => Number(item?.expense) || 0),
+          backgroundColor: '#ffc9c2',
+          borderColor: '#f5a197',
+          borderWidth: 1,
+          borderRadius: 8,
+          maxBarThickness: 42,
+        },
+      ];
+      showChartCaption('Income and expense activity for the last 6 months.');
+    } else if (normalizedBalances.length > 0) {
+      labels = normalizedBalances.map((balance) => balance.currency_code);
+      datasets = [
+        {
+          label: 'Current Balance',
+          data: normalizedBalances.map((balance) => Number(balance.balance) || 0),
+          backgroundColor: '#c7f9cc',
+          borderColor: '#4caf50',
+          borderWidth: 1,
+          borderRadius: 8,
+          maxBarThickness: 42,
+        },
+      ];
+      showChartCaption('No transactions yet. Showing current balances by currency.');
+    } else {
+      labels = ['No Data'];
+      datasets = [
+        {
+          label: 'Current Balance',
+          data: [0],
+          backgroundColor: '#e5e7eb',
+          borderColor: '#cbd5e1',
+          borderWidth: 1,
+          borderRadius: 8,
+          maxBarThickness: 42,
+        },
+      ];
+      showChartCaption('No balances or transactions available yet.');
     }
 
-    incomeExpenseChart = new Chart(incomeExpenseCanvas, {
+    destroyDashboardChart();
+
+    dashboardChart = new Chart(incomeExpenseCanvas, {
       type: 'bar',
       data: {
         labels,
-        datasets: [
-          {
-            label: 'Income',
-            data: income,
-            backgroundColor: '#8bc5ff',
-            borderColor: '#5ea9f3',
-            borderWidth: 1,
-            borderRadius: 8,
-          },
-          {
-            label: 'Expense',
-            data: expense,
-            backgroundColor: '#ffc9c2',
-            borderColor: '#f5a197',
-            borderWidth: 1,
-            borderRadius: 8,
-          },
-        ],
+        datasets,
       },
       options: {
         responsive: true,
@@ -287,8 +560,24 @@ import AppShell from '../components/AppShell.astro';
           legend: {
             position: 'top',
             labels: {
-              boxWidth: 14,
               color: '#52627a',
+              boxWidth: 14,
+              boxHeight: 10,
+              borderRadius: 4,
+              useBorderRadius: true,
+              font: {
+                size: 12,
+                weight: '600',
+              },
+            },
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const label = context.dataset?.label || 'Series';
+                const value = Number(context.parsed?.y || 0).toLocaleString('en-US');
+                return `${label}: ${value}`;
+              },
             },
           },
         },
@@ -299,20 +588,138 @@ import AppShell from '../components/AppShell.astro';
             },
             ticks: {
               color: '#52627a',
+              font: {
+                size: 11,
+                weight: '600',
+              },
             },
           },
           y: {
             beginAtZero: true,
-            grid: {
-              color: '#e4ebf5',
-            },
             ticks: {
               color: '#52627a',
+              callback: (value) => formatCompactNumber(value),
             },
           },
         },
       },
     });
+  }
+
+  function renderTransactionHistory(transactions) {
+    const safeTransactions = Array.isArray(transactions) ? transactions : [];
+
+    if (safeTransactions.length === 0) {
+      txHistoryBody.innerHTML =
+        '<tr><td colspan="7" class="helper-text">No transactions yet. Add one from Quick Actions above.</td></tr>';
+      return;
+    }
+
+    txHistoryBody.innerHTML = safeTransactions
+      .map((transaction) => {
+        const referenceText =
+          transaction.reference_currency_code && transaction.reference_amount
+            ? `${formatMoney(transaction.reference_amount, transaction.reference_currency_code)} (${transaction.reference_currency_code})`
+            : '-';
+
+        return `
+          <tr>
+            <td>${escapeHtml(formatDate(transaction.created_at))}</td>
+            <td>${escapeHtml(typeLabel(transaction.type))}</td>
+            <td>${escapeHtml(transaction.currency_code)}</td>
+            <td>${escapeHtml(formatMoney(transaction.amount, transaction.currency_code))}</td>
+            <td>${escapeHtml(referenceText)}</td>
+            <td>${escapeHtml(transaction.description || '-')}</td>
+            <td>
+              <div class="row-actions">
+                <button type="button" data-history-action="edit" data-transaction-id="${transaction.id}">Edit</button>
+                <button
+                  type="button"
+                  class="btn-danger"
+                  data-history-action="delete"
+                  data-transaction-id="${transaction.id}"
+                >
+                  Delete
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      })
+      .join('');
+  }
+
+  function clearUndoState() {
+    deletedTransactionSnapshot = null;
+
+    if (undoTimerId) {
+      clearTimeout(undoTimerId);
+      undoTimerId = null;
+    }
+
+    txHistoryUndoWrap.hidden = true;
+    txHistoryUndoText.textContent = '';
+  }
+
+  function showUndoState(transaction) {
+    deletedTransactionSnapshot = transaction;
+    txHistoryUndoText.textContent = `Deleted ${typeLabel(transaction.type)} ${formatMoney(transaction.amount, transaction.currency_code)}.`;
+    txHistoryUndoWrap.hidden = false;
+
+    if (undoTimerId) {
+      clearTimeout(undoTimerId);
+    }
+
+    undoTimerId = setTimeout(() => {
+      clearUndoState();
+    }, HISTORY_UNDO_WINDOW_MS);
+  }
+
+  function buildCreatePayloadFromTransaction(transaction) {
+    const payload = {
+      type: transaction.type,
+      currencyCode: transaction.currency_code,
+      amount: transaction.amount,
+      description: transaction.description || '',
+    };
+
+    const occurredAt = new Date(transaction.created_at);
+    if (!Number.isNaN(occurredAt.valueOf())) {
+      payload.occurredAt = occurredAt.toISOString();
+    }
+
+    if (transaction.type === 'conversion') {
+      payload.referenceCurrencyCode = transaction.reference_currency_code;
+      payload.referenceAmount = transaction.reference_amount;
+    }
+
+    return payload;
+  }
+
+  function openHistoryEditDialog(transactionId) {
+    const transaction = dashboardTransactions.find((item) => item.id === transactionId);
+
+    if (!transaction || !txHistoryDialog) {
+      return;
+    }
+
+    txHistoryForm.reset();
+    txHistoryId.value = transaction.id;
+    txHistoryType.value = transaction.type;
+    txHistoryCurrency.value = transaction.currency_code;
+    txHistoryAmount.value = String(transaction.amount);
+    txHistoryReferenceCurrency.value = transaction.reference_currency_code || '';
+    txHistoryReferenceAmount.value =
+      transaction.reference_amount === null || typeof transaction.reference_amount === 'undefined'
+        ? ''
+        : String(transaction.reference_amount);
+    txHistoryOccurredAt.value = toDateTimeInputFromIso(transaction.created_at);
+    txHistoryDescription.value = transaction.description || '';
+    txHistoryType.dispatchEvent(new Event('change', { bubbles: true }));
+    txHistoryCurrency.dispatchEvent(new Event('change', { bubbles: true }));
+    txHistoryReferenceCurrency.dispatchEvent(new Event('change', { bubbles: true }));
+    showHistoryFormError('');
+    txHistoryDialog.showModal();
   }
 
   /**
@@ -348,10 +755,15 @@ import AppShell from '../components/AppShell.astro';
 
     txCurrency.innerHTML = options;
     txReferenceCurrency.innerHTML = `<option value="">Select currency</option>${options}`;
+    txHistoryCurrency.innerHTML = options;
+    txHistoryReferenceCurrency.innerHTML = `<option value="">Select currency</option>${options}`;
   }
 
   async function refreshDashboard() {
-    const summary = await withRetry(() => getDashboardSummary());
+    const [summary, transactions] = await withRetry(() =>
+      Promise.all([getDashboardSummary(), listTransactions(HISTORY_FETCH_LIMIT)])
+    );
+
     const balances = Array.isArray(summary?.balances) ? summary.balances : [];
     const incomeExpense = Array.isArray(summary?.incomeExpense) ? summary.incomeExpense : [];
 
@@ -363,8 +775,11 @@ import AppShell from '../components/AppShell.astro';
 
     balanceCountEl.textContent = String(balances.length);
 
+    dashboardTransactions = Array.isArray(transactions) ? transactions : [];
+
     renderBalances(balances);
-    renderIncomeExpenseChart(incomeExpense);
+    renderIncomeExpenseChart({ incomeExpense, balances });
+    renderTransactionHistory(dashboardTransactions);
   }
 
   transactionForm?.addEventListener('submit', async (event) => {
@@ -399,9 +814,11 @@ import AppShell from '../components/AppShell.astro';
     try {
       await createTransaction(payload);
       showTransactionStatus({ success: 'Transaction saved successfully.' });
+      showHistoryStatus({});
       transactionForm.reset();
       txOccurredAt.value = toLocalDateTimeInputValue();
       toggleConversionFields();
+      txType.dispatchEvent(new Event('change', { bubbles: true }));
       await refreshDashboard();
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'Failed to save transaction.';
@@ -410,6 +827,121 @@ import AppShell from '../components/AppShell.astro';
   });
 
   txType?.addEventListener('change', toggleConversionFields);
+  txHistoryType?.addEventListener('change', toggleHistoryConversionFields);
+
+  txHistoryDialogClose?.addEventListener('click', () => txHistoryDialog.close());
+  txHistoryDialogCancel?.addEventListener('click', () => txHistoryDialog.close());
+
+  txHistoryForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    showHistoryFormError('');
+
+    const transactionId = txHistoryId.value;
+    if (!transactionId) {
+      showHistoryFormError('Missing transaction id.');
+      return;
+    }
+
+    const rawOccurredAt = txHistoryOccurredAt.value;
+    if (isExpenseType(txHistoryType.value) && !rawOccurredAt) {
+      showHistoryFormError('occurredAt is required for expense transactions.');
+      return;
+    }
+
+    const parsedOccurredAt = rawOccurredAt ? new Date(rawOccurredAt) : null;
+    if (rawOccurredAt && Number.isNaN(parsedOccurredAt?.valueOf())) {
+      showHistoryFormError('occurredAt must be a valid datetime.');
+      return;
+    }
+
+    const payload = {
+      type: txHistoryType.value,
+      currencyCode: txHistoryCurrency.value,
+      amount: txHistoryAmount.value,
+      description: txHistoryDescription.value,
+      occurredAt: parsedOccurredAt ? parsedOccurredAt.toISOString() : undefined,
+    };
+
+    if (txHistoryType.value === 'conversion') {
+      payload.referenceCurrencyCode = txHistoryReferenceCurrency.value;
+      payload.referenceAmount = txHistoryReferenceAmount.value;
+    }
+
+    try {
+      await updateTransaction(transactionId, payload);
+      txHistoryDialog.close();
+      showHistoryStatus({ success: 'Transaction updated and balances recalculated successfully.' });
+      await refreshDashboard();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Failed to update transaction.';
+      showHistoryFormError(message);
+    }
+  });
+
+  txHistoryBody?.addEventListener('click', async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const actionButton = target.closest('button[data-history-action]');
+    if (!(actionButton instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    const action = actionButton.dataset.historyAction;
+    const transactionId = actionButton.dataset.transactionId;
+
+    if (!action || !transactionId) {
+      return;
+    }
+
+    if (action === 'edit') {
+      openHistoryEditDialog(transactionId);
+      return;
+    }
+
+    if (action !== 'delete') {
+      return;
+    }
+
+    const transaction = dashboardTransactions.find((item) => item.id === transactionId);
+    if (!transaction) {
+      return;
+    }
+
+    const confirmed = window.confirm('Delete this transaction? Balances will be recalculated automatically.');
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteTransaction(transactionId);
+      showUndoState(transaction);
+      showHistoryStatus({ success: 'Transaction deleted. Undo is available for 30 seconds.' });
+      await refreshDashboard();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Failed to delete transaction.';
+      showHistoryStatus({ error: message });
+    }
+  });
+
+  txHistoryUndoBtn?.addEventListener('click', async () => {
+    if (!deletedTransactionSnapshot) {
+      return;
+    }
+
+    try {
+      const payload = buildCreatePayloadFromTransaction(deletedTransactionSnapshot);
+      await createTransaction(payload);
+      clearUndoState();
+      showHistoryStatus({ success: 'Undo completed. Transaction and balances were restored.' });
+      await refreshDashboard();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Failed to undo transaction deletion.';
+      showHistoryStatus({ error: message });
+    }
+  });
 
   async function bootstrap() {
     if (window.__ommAuthReady) {
@@ -419,6 +951,9 @@ import AppShell from '../components/AppShell.astro';
     await populateCurrencyOptions();
     txOccurredAt.value = toLocalDateTimeInputValue();
     toggleConversionFields();
+    toggleHistoryConversionFields();
+    txType.dispatchEvent(new Event('change', { bubbles: true }));
+    txHistoryType.dispatchEvent(new Event('change', { bubbles: true }));
     await refreshDashboard();
   }
 
@@ -430,12 +965,18 @@ import AppShell from '../components/AppShell.astro';
 </script>
 
 <style>
-  #income-expense-chart {
-    height: 310px;
-    width: 100%;
-    border-radius: 8px;
+  :global(.dashboard-chart-wrap) {
     border: 1px solid #e4ebf5;
-    background: #fff;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 12px;
+    min-height: 320px;
+    height: 320px;
+  }
+
+  :global(.dashboard-chart-wrap canvas) {
+    width: 100% !important;
+    height: 100% !important;
   }
 
   .quick-actions-card,
@@ -457,6 +998,11 @@ import AppShell from '../components/AppShell.astro';
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .transaction-history-wrap {
+    max-height: 440px;
+    overflow-y: auto;
+  }
+
   @media (max-width: 1460px) {
     .quick-actions-card .quick-row.columns-2 {
       grid-template-columns: 1fr;
@@ -466,6 +1012,12 @@ import AppShell from '../components/AppShell.astro';
   @media (max-width: 640px) {
     .quick-actions-card .quick-actions .btn {
       width: 100%;
+    }
+
+    :global(.dashboard-chart-wrap) {
+      min-height: 280px;
+      height: 280px;
+      padding: 10px;
     }
   }
 </style>

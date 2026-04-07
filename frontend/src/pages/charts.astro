@@ -18,9 +18,6 @@ import AppShell from '../components/AppShell.astro';
       </div>
       <button type="button" id="charts-refresh-btn">Refresh Charts</button>
     </div>
-
-    <p id="charts-error" class="error-text" hidden></p>
-    <p id="charts-success" class="success-text" hidden></p>
   </section>
 
   <section class="grid-2">
@@ -60,6 +57,16 @@ import AppShell from '../components/AppShell.astro';
       <canvas id="analysis-kline-chart" aria-label="Balance candlestick chart" role="img"></canvas>
     </div>
   </section>
+
+  <section class="card panel">
+    <h3 class="panel-title">Funds by Bank / Wallet</h3>
+    <p class="helper-text" style="margin-bottom: 10px;">
+      Balance distribution across banks and wallets.
+    </p>
+    <div class="analysis-chart-wrap">
+      <canvas id="analysis-bank-chart" aria-label="Per-bank balance chart" role="img"></canvas>
+    </div>
+  </section>
 </AppShell>
 
 <script>
@@ -83,24 +90,22 @@ import AppShell from '../components/AppShell.astro';
     pie: ['#8bc5ff', '#ffc9c2', '#c7f9cc', '#fde68a', '#d8b4fe'],
   };
 
-  const chartsError = document.getElementById('charts-error');
-  const chartsSuccess = document.getElementById('charts-success');
   const refreshButton = document.getElementById('charts-refresh-btn');
 
   const barCanvas = document.getElementById('analysis-bar-chart');
   const pieCanvas = document.getElementById('analysis-pie-chart');
   const lineCanvas = document.getElementById('analysis-line-chart');
   const klineCanvas = document.getElementById('analysis-kline-chart');
+  const bankCanvas = document.getElementById('analysis-bank-chart');
 
   let barChart = null;
   let pieChart = null;
   let lineChart = null;
+  let bankChart = null;
 
   function showStatus({ error = '', success = '' }) {
-    chartsError.hidden = !error;
-    chartsSuccess.hidden = !success;
-    chartsError.textContent = error;
-    chartsSuccess.textContent = success;
+    if (error) window.__ommToast?.(error, 'error');
+    if (success) window.__ommToast?.(success, 'success');
   }
 
   function formatCompactNumber(value) {
@@ -288,6 +293,48 @@ import AppShell from '../components/AppShell.astro';
     });
   }
 
+  function renderBankChart(walletSummary) {
+    if (!bankCanvas) return;
+
+    const wallets = Array.isArray(walletSummary) ? walletSummary : [];
+    const labels = wallets.length > 0 ? wallets.map((w) => w.bankName) : ['No Data'];
+    const values = wallets.length > 0 ? wallets.map((w) => Number(w.totalBalance) || 0) : [0];
+
+    destroyChart(bankChart);
+
+    bankChart = new Chart(bankCanvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Total Balance',
+            data: values,
+            backgroundColor: COLORS.pie.slice(0, Math.max(values.length, 1)),
+            borderColor: '#ffffff',
+            borderWidth: 1,
+            borderRadius: 8,
+            maxBarThickness: 50,
+          },
+        ],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            ticks: { callback: (v) => formatCompactNumber(v) },
+          },
+        },
+      },
+    });
+  }
+
   function drawCandlestickChart(canvas, ohlcRows) {
     const rows = Array.isArray(ohlcRows) ? ohlcRows : [];
     if (!canvas || rows.length === 0) return;
@@ -388,6 +435,7 @@ import AppShell from '../components/AppShell.astro';
     renderBarChart(incomeExpense);
     renderPieChart(Array.isArray(transactions) ? transactions : []);
     renderLineChart(incomeExpense);
+    renderBankChart(summary?.walletSummary);
 
     // Load K-line independently so a failure never blocks the other three charts.
     try {

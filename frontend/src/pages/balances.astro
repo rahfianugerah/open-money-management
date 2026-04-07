@@ -16,9 +16,11 @@ import AppShell from '../components/AppShell.astro';
       <table>
         <thead>
           <tr>
+            <th>Bank</th>
             <th>Currency</th>
             <th>Name</th>
             <th>Amount</th>
+            <th>Category</th>
             <th>Updated</th>
             <th>Actions</th>
           </tr>
@@ -27,9 +29,6 @@ import AppShell from '../components/AppShell.astro';
       </table>
     </div>
   </section>
-
-  <p id="balances-error" class="error-text" hidden></p>
-  <p id="balances-success" class="success-text" hidden></p>
 
   <dialog id="balance-dialog">
     <form id="balance-form" method="dialog">
@@ -58,6 +57,17 @@ import AppShell from '../components/AppShell.astro';
             required
           />
         </div>
+
+        <div class="form-grid columns-2">
+          <div class="form-row">
+            <label for="balance-bank-name" class="field-label">Bank / Wallet</label>
+            <input id="balance-bank-name" name="bankName" class="input" placeholder="Cash" />
+          </div>
+          <div class="form-row">
+            <label for="balance-category" class="field-label">Category</label>
+            <input id="balance-category" name="category" class="input" placeholder="General" />
+          </div>
+        </div>
       </div>
 
       <footer class="dialog-footer">
@@ -68,7 +78,8 @@ import AppShell from '../components/AppShell.astro';
   </dialog>
 </AppShell>
 
-<script type="module">
+<script>
+  // @ts-nocheck
   import {
     ApiError,
     listBalances,
@@ -76,11 +87,9 @@ import AppShell from '../components/AppShell.astro';
     upsertBalance,
     updateBalance,
     deleteBalance,
-  } from '/lib/client-api.js';
+  } from '../lib/client-api.js';
 
   const balancesBody = document.getElementById('balances-body');
-  const errorEl = document.getElementById('balances-error');
-  const successEl = document.getElementById('balances-success');
 
   const dialog = document.getElementById('balance-dialog');
   const dialogTitle = document.getElementById('balance-dialog-title');
@@ -92,6 +101,8 @@ import AppShell from '../components/AppShell.astro';
   const balanceIdInput = document.getElementById('balance-id');
   const currencyInput = document.getElementById('balance-currency');
   const amountInput = document.getElementById('balance-amount');
+  const bankNameInput = document.getElementById('balance-bank-name');
+  const categoryInput = document.getElementById('balance-category');
 
   let cachedBalances = [];
 
@@ -114,16 +125,14 @@ import AppShell from '../components/AppShell.astro';
   }
 
   function showStatus({ error = '', success = '' }) {
-    errorEl.hidden = !error;
-    successEl.hidden = !success;
-    errorEl.textContent = error;
-    successEl.textContent = success;
+    if (error) window.__ommToast?.(error, 'error');
+    if (success) window.__ommToast?.(success, 'success');
   }
 
   function renderBalances(balances) {
     if (!balances || balances.length === 0) {
       balancesBody.innerHTML =
-        '<tr><td colspan="5" class="helper-text">No balances found. Add your first balance.</td></tr>';
+        '<tr><td colspan="7" class="helper-text">No balances found. Add your first balance.</td></tr>';
       return;
     }
 
@@ -131,9 +140,11 @@ import AppShell from '../components/AppShell.astro';
       .map(
         (balance) => `
           <tr>
+            <td>${balance.bank_name || 'Cash'}</td>
             <td>${balance.currency_code}</td>
             <td>${balance.currency_name}</td>
             <td>${formatMoney(balance.balance, balance.currency_code)}</td>
+            <td>${balance.category || 'General'}</td>
             <td>${formatDate(balance.updated_at)}</td>
             <td>
               <div class="row-actions">
@@ -165,6 +176,7 @@ import AppShell from '../components/AppShell.astro';
     form.reset();
     balanceIdInput.value = '';
     currencyInput.disabled = false;
+    bankNameInput.disabled = false;
     dialogTitle.textContent = 'Add Balance';
     dialog.showModal();
   }
@@ -179,6 +191,9 @@ import AppShell from '../components/AppShell.astro';
     balanceIdInput.value = balance.id;
     currencyInput.value = balance.currency_code;
     currencyInput.disabled = true;
+    bankNameInput.value = balance.bank_name || '';
+    bankNameInput.disabled = true;
+    categoryInput.value = balance.category || '';
     amountInput.value = String(balance.balance);
     dialogTitle.textContent = `Edit Balance (${balance.currency_code})`;
     dialog.showModal();
@@ -205,6 +220,8 @@ import AppShell from '../components/AppShell.astro';
         await upsertBalance({
           currencyCode: currencyInput.value,
           amount: amountInput.value,
+          bankName: bankNameInput.value || undefined,
+          category: categoryInput.value || undefined,
         });
         showStatus({ success: 'Balance saved successfully.' });
       }

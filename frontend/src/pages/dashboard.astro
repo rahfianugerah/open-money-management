@@ -30,6 +30,14 @@ import AppShell from '../components/AppShell.astro';
     </article>
   </section>
 
+  <section class="card panel" id="wallet-summary-section" style="display:none;">
+    <h3 class="panel-title">Wallet / Bank Summary</h3>
+    <p class="helper-text" style="margin-bottom: 12px;">
+      Funds grouped by bank or wallet. Each card shows one location with its currency breakdown.
+    </p>
+    <div class="grid-3" id="wallet-cards-container"></div>
+  </section>
+
   <section class="grid-2">
     <article class="card panel">
       <h3 class="panel-title">Income vs Expenses (Last 6 Months)</h3>
@@ -106,8 +114,16 @@ import AppShell from '../components/AppShell.astro';
           </div>
         </div>
 
-        <p class="error-text" id="tx-error" hidden></p>
-        <p class="success-text" id="tx-success" hidden></p>
+        <div class="form-grid columns-2 quick-row">
+          <div class="form-row">
+            <label class="field-label" for="tx-bank-name">Bank / Wallet</label>
+            <input id="tx-bank-name" name="bankName" class="input" placeholder="Cash" />
+          </div>
+          <div class="form-row">
+            <label class="field-label" for="tx-category">Category</label>
+            <input id="tx-category" name="category" class="input" placeholder="General" />
+          </div>
+        </div>
 
         <div>
           <button type="submit" class="btn-primary">Save Transaction</button>
@@ -122,6 +138,7 @@ import AppShell from '../components/AppShell.astro';
       <table>
         <thead>
           <tr>
+            <th>Bank</th>
             <th>Currency</th>
             <th>Name</th>
             <th>Amount</th>
@@ -151,6 +168,7 @@ import AppShell from '../components/AppShell.astro';
             <th>Type</th>
             <th>Currency</th>
             <th>Amount</th>
+            <th>Bank</th>
             <th>Reference</th>
             <th>Description</th>
             <th>Actions</th>
@@ -165,8 +183,7 @@ import AppShell from '../components/AppShell.astro';
       <button type="button" id="tx-history-undo-btn">Undo Delete</button>
     </div>
 
-    <p class="error-text" id="tx-history-error" hidden></p>
-    <p class="success-text" id="tx-history-success" hidden></p>
+    </div>
   </section>
 
   <dialog id="tx-history-dialog">
@@ -241,6 +258,17 @@ import AppShell from '../components/AppShell.astro';
           <input id="tx-history-description" name="description" class="input" placeholder="Optional note" />
         </div>
 
+        <div class="form-grid columns-2">
+          <div class="form-row">
+            <label class="field-label" for="tx-history-bank-name">Bank / Wallet</label>
+            <input id="tx-history-bank-name" name="bankName" class="input" placeholder="Cash" />
+          </div>
+          <div class="form-row">
+            <label class="field-label" for="tx-history-category">Category</label>
+            <input id="tx-history-category" name="category" class="input" placeholder="General" />
+          </div>
+        </div>
+
         <p class="error-text" id="tx-history-form-error" hidden></p>
       </div>
 
@@ -293,15 +321,13 @@ import AppShell from '../components/AppShell.astro';
   const txReferenceAmount = document.getElementById('tx-reference-amount');
   const txOccurredAt = document.getElementById('tx-occurred-at');
   const txDescription = document.getElementById('tx-description');
-  const txError = document.getElementById('tx-error');
-  const txSuccess = document.getElementById('tx-success');
+  const txBankName = document.getElementById('tx-bank-name');
+  const txCategory = document.getElementById('tx-category');
 
   const incomeExpenseCaption = document.getElementById('income-expense-caption');
   const incomeExpenseCanvas = document.getElementById('income-expense-chart');
 
   const txHistoryBody = document.getElementById('transaction-history-body');
-  const txHistoryError = document.getElementById('tx-history-error');
-  const txHistorySuccess = document.getElementById('tx-history-success');
   const txHistoryUndoWrap = document.getElementById('tx-history-undo-wrap');
   const txHistoryUndoText = document.getElementById('tx-history-undo-text');
   const txHistoryUndoBtn = document.getElementById('tx-history-undo-btn');
@@ -320,6 +346,8 @@ import AppShell from '../components/AppShell.astro';
   const txHistoryReferenceAmount = document.getElementById('tx-history-reference-amount');
   const txHistoryOccurredAt = document.getElementById('tx-history-occurred-at');
   const txHistoryDescription = document.getElementById('tx-history-description');
+  const txHistoryBankName = document.getElementById('tx-history-bank-name');
+  const txHistoryCategory = document.getElementById('tx-history-category');
   const txHistoryFormError = document.getElementById('tx-history-form-error');
 
   let dashboardChart = null;
@@ -397,17 +425,13 @@ import AppShell from '../components/AppShell.astro';
   }
 
   function showTransactionStatus({ error = '', success = '' }) {
-    txError.hidden = !error;
-    txSuccess.hidden = !success;
-    txError.textContent = error;
-    txSuccess.textContent = success;
+    if (error) window.__ommToast?.(error, 'error');
+    if (success) window.__ommToast?.(success, 'success');
   }
 
   function showHistoryStatus({ error = '', success = '' }) {
-    txHistoryError.hidden = !error;
-    txHistorySuccess.hidden = !success;
-    txHistoryError.textContent = error;
-    txHistorySuccess.textContent = success;
+    if (error) window.__ommToast?.(error, 'error');
+    if (success) window.__ommToast?.(success, 'success');
   }
 
   function showHistoryFormError(message = '') {
@@ -448,7 +472,7 @@ import AppShell from '../components/AppShell.astro';
   function renderBalances(balances) {
     if (!balances || balances.length === 0) {
       balancesTableBody.innerHTML =
-        '<tr><td colspan="4" class="helper-text">No balances yet. Add one from Balances page.</td></tr>';
+        '<tr><td colspan="5" class="helper-text">No balances yet. Add one from Balances page.</td></tr>';
       return;
     }
 
@@ -456,6 +480,7 @@ import AppShell from '../components/AppShell.astro';
       .map(
         (balance) => `
           <tr>
+            <td>${escapeHtml(balance.bank_name || 'Cash')}</td>
             <td>${escapeHtml(balance.currency_code)}</td>
             <td>${escapeHtml(balance.currency_name)}</td>
             <td>${escapeHtml(formatMoney(balance.balance, balance.currency_code))}</td>
@@ -463,6 +488,37 @@ import AppShell from '../components/AppShell.astro';
           </tr>
         `
       )
+      .join('');
+  }
+
+  function renderWalletCards(walletSummary) {
+    const section = document.getElementById('wallet-summary-section');
+    const container = document.getElementById('wallet-cards-container');
+    if (!section || !container) return;
+
+    const wallets = Array.isArray(walletSummary) ? walletSummary : [];
+    if (wallets.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = '';
+    container.innerHTML = wallets
+      .map((wallet) => {
+        const lines = (wallet.currencies || [])
+          .map(
+            (c) =>
+              `<div class="wallet-currency-row"><span>${escapeHtml(c.currency_code)}</span><span>${escapeHtml(formatMoney(c.balance, c.currency_code))}</span></div>`
+          )
+          .join('');
+
+        return `
+          <article class="card panel wallet-card" style="border-left: 4px solid #6366f1;">
+            <h4 class="panel-title" style="margin-bottom:8px;">${escapeHtml(wallet.bankName)}</h4>
+            ${lines}
+          </article>
+        `;
+      })
       .join('');
   }
 
@@ -611,7 +667,7 @@ import AppShell from '../components/AppShell.astro';
 
     if (safeTransactions.length === 0) {
       txHistoryBody.innerHTML =
-        '<tr><td colspan="7" class="helper-text">No transactions yet. Add one from Quick Actions above.</td></tr>';
+        '<tr><td colspan="8" class="helper-text">No transactions yet. Add one from Quick Actions above.</td></tr>';
       return;
     }
 
@@ -628,6 +684,7 @@ import AppShell from '../components/AppShell.astro';
             <td>${escapeHtml(typeLabel(transaction.type))}</td>
             <td>${escapeHtml(transaction.currency_code)}</td>
             <td>${escapeHtml(formatMoney(transaction.amount, transaction.currency_code))}</td>
+            <td>${escapeHtml(transaction.bank_name || 'Cash')}</td>
             <td>${escapeHtml(referenceText)}</td>
             <td>${escapeHtml(transaction.description || '-')}</td>
             <td>
@@ -681,11 +738,12 @@ import AppShell from '../components/AppShell.astro';
       currencyCode: transaction.currency_code,
       amount: transaction.amount,
       description: transaction.description || '',
+      bankName: transaction.bank_name || undefined,
+      category: transaction.category || undefined,
     };
 
-    const occurredAt = new Date(transaction.created_at);
-    if (!Number.isNaN(occurredAt.valueOf())) {
-      payload.occurredAt = occurredAt.toISOString();
+    if (transaction.created_at) {
+      payload.occurredAt = String(transaction.created_at).replace(/Z$/, '').replace(/[+-]\d{2}:\d{2}$/, '');
     }
 
     if (transaction.type === 'conversion') {
@@ -715,6 +773,8 @@ import AppShell from '../components/AppShell.astro';
         : String(transaction.reference_amount);
     txHistoryOccurredAt.value = toDateTimeInputFromIso(transaction.created_at);
     txHistoryDescription.value = transaction.description || '';
+    txHistoryBankName.value = transaction.bank_name || '';
+    txHistoryCategory.value = transaction.category || '';
     txHistoryType.dispatchEvent(new Event('change', { bubbles: true }));
     txHistoryCurrency.dispatchEvent(new Event('change', { bubbles: true }));
     txHistoryReferenceCurrency.dispatchEvent(new Event('change', { bubbles: true }));
@@ -778,6 +838,7 @@ import AppShell from '../components/AppShell.astro';
     dashboardTransactions = Array.isArray(transactions) ? transactions : [];
 
     renderBalances(balances);
+    renderWalletCards(summary?.walletSummary);
     renderIncomeExpenseChart({ incomeExpense, balances });
     renderTransactionHistory(dashboardTransactions);
   }
@@ -792,18 +853,14 @@ import AppShell from '../components/AppShell.astro';
       return;
     }
 
-    const parsedOccurredAt = rawOccurredAt ? new Date(rawOccurredAt) : null;
-    if (rawOccurredAt && Number.isNaN(parsedOccurredAt?.valueOf())) {
-      showTransactionStatus({ error: 'occurredAt must be a valid datetime.' });
-      return;
-    }
-
     const payload = {
       type: txType.value,
       currencyCode: txCurrency.value,
       amount: txAmount.value,
       description: txDescription.value,
-      occurredAt: parsedOccurredAt ? parsedOccurredAt.toISOString() : undefined,
+      occurredAt: rawOccurredAt || undefined,
+      bankName: txBankName.value || undefined,
+      category: txCategory.value || undefined,
     };
 
     if (txType.value === 'conversion') {
@@ -848,18 +905,14 @@ import AppShell from '../components/AppShell.astro';
       return;
     }
 
-    const parsedOccurredAt = rawOccurredAt ? new Date(rawOccurredAt) : null;
-    if (rawOccurredAt && Number.isNaN(parsedOccurredAt?.valueOf())) {
-      showHistoryFormError('occurredAt must be a valid datetime.');
-      return;
-    }
-
     const payload = {
       type: txHistoryType.value,
       currencyCode: txHistoryCurrency.value,
       amount: txHistoryAmount.value,
       description: txHistoryDescription.value,
-      occurredAt: parsedOccurredAt ? parsedOccurredAt.toISOString() : undefined,
+      occurredAt: rawOccurredAt || undefined,
+      bankName: txHistoryBankName.value || undefined,
+      category: txHistoryCategory.value || undefined,
     };
 
     if (txHistoryType.value === 'conversion') {
@@ -958,9 +1011,8 @@ import AppShell from '../components/AppShell.astro';
   }
 
   bootstrap().catch((error) => {
-    showTransactionStatus({
-      error: error instanceof ApiError ? error.message : 'Failed to load dashboard data.',
-    });
+    const msg = error instanceof ApiError ? error.message : 'Failed to load dashboard data.';
+    window.__ommToast?.(msg, 'error', 8000);
   });
 </script>
 
@@ -1001,6 +1053,23 @@ import AppShell from '../components/AppShell.astro';
   .transaction-history-wrap {
     max-height: 440px;
     overflow-y: auto;
+  }
+
+  :global(.wallet-card) {
+    padding: 14px 16px;
+  }
+
+  :global(.wallet-currency-row) {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 0.875rem;
+    color: var(--text);
+    border-bottom: 1px solid var(--line);
+  }
+
+  :global(.wallet-currency-row:last-child) {
+    border-bottom: none;
   }
 
   @media (max-width: 1460px) {

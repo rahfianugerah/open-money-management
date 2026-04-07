@@ -20,6 +20,8 @@ const { pageTitle } = Astro.props;
       </section>
     </main>
   </div>
+
+  <div id="toast-container" aria-live="polite"></div>
 </Layout>
 
 <script type="module">
@@ -54,4 +56,36 @@ const { pageTitle } = Astro.props;
     await logout();
     window.location.href = '/login';
   });
+</script>
+
+<script type="module">
+  const ICON_MAP = { success: '\u2713', error: '\u2717', warning: '!', info: 'i' };
+  const DEFAULT_DURATION = 4000;
+
+  function showToast(message, type = 'success', durationMs = DEFAULT_DURATION) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML =
+      `<span class="toast-icon">${ICON_MAP[type] || ICON_MAP.info}</span>` +
+      `<span class="toast-body">${message.replace(/</g, '&lt;')}</span>` +
+      `<button class="toast-close" aria-label="Dismiss">&times;</button>`;
+
+    const dismiss = () => {
+      toast.classList.add('toast-exit');
+      setTimeout(() => toast.remove(), 300);
+    };
+
+    toast.querySelector('.toast-close')?.addEventListener('click', dismiss);
+
+    container.appendChild(toast);
+
+    if (durationMs > 0) {
+      setTimeout(dismiss, durationMs);
+    }
+  }
+
+  window.__ommToast = showToast;
 </script>

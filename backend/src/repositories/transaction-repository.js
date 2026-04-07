@@ -14,6 +14,8 @@ async function listTransactions(userId, limit = 100) {
         ref.code AS reference_currency_code,
         t.reference_amount,
         t.description,
+        t.bank_name,
+        t.category,
         t.created_at
       FROM transactions t
       INNER JOIN currencies c ON c.id = t.currency_id
@@ -42,6 +44,8 @@ async function findTransactionById(id, userId) {
         ref.code AS reference_currency_code,
         t.reference_amount,
         t.description,
+        t.bank_name,
+        t.category,
         t.created_at
       FROM transactions t
       INNER JOIN currencies c ON c.id = t.currency_id
@@ -64,6 +68,8 @@ async function createTransaction({
   referenceAmount,
   description,
   occurredAt,
+  bankName = 'Cash',
+  category = 'General',
 }) {
   // created_at can be provided explicitly for backdated/expense datetime support.
   const result = await query(
@@ -76,10 +82,12 @@ async function createTransaction({
         reference_currency_id,
         reference_amount,
         description,
-        created_at
+        created_at,
+        bank_name,
+        category
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::timestamp, NOW()))
-      RETURNING id, user_id, currency_id, type, amount, reference_currency_id, reference_amount, description, created_at
+      VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::timestamp, NOW()), $9, $10)
+      RETURNING id, user_id, currency_id, type, amount, reference_currency_id, reference_amount, description, bank_name, category, created_at
     `,
     [
       userId,
@@ -90,6 +98,8 @@ async function createTransaction({
       referenceAmount,
       description,
       occurredAt,
+      bankName,
+      category,
     ]
   );
 
@@ -106,6 +116,8 @@ async function updateTransactionById({
   referenceAmount,
   description,
   occurredAt,
+  bankName = 'Cash',
+  category = 'General',
 }) {
   const result = await query(
     `
@@ -117,9 +129,11 @@ async function updateTransactionById({
         reference_currency_id = $6,
         reference_amount = $7,
         description = $8,
-        created_at = $9::timestamp
+        created_at = COALESCE($9::timestamp, created_at),
+        bank_name = $10,
+        category = $11
       WHERE id = $1 AND user_id = $2
-      RETURNING id, user_id, currency_id, type, amount, reference_currency_id, reference_amount, description, created_at
+      RETURNING id, user_id, currency_id, type, amount, reference_currency_id, reference_amount, description, bank_name, category, created_at
     `,
     [
       id,
@@ -131,6 +145,8 @@ async function updateTransactionById({
       referenceAmount,
       description,
       occurredAt,
+      bankName,
+      category,
     ]
   );
 

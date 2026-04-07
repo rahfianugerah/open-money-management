@@ -15,7 +15,7 @@ async function listUserBalances(userId) {
   return balances.map(normalizeBalanceRecord);
 }
 
-async function upsertUserBalance(userId, { currencyCode, amount }) {
+async function upsertUserBalance(userId, { currencyCode, amount, bankName, category }) {
   const normalizedCode = normalizeCurrencyCode(currencyCode, 'currencyCode');
   const parsedAmount = parseAmount(amount, 'amount');
 
@@ -23,12 +23,17 @@ async function upsertUserBalance(userId, { currencyCode, amount }) {
     throw new AppError('amount cannot be negative', 400);
   }
 
+  const safeBankName = (bankName && String(bankName).trim()) || 'Cash';
+  const safeCategory = (category && String(category).trim()) || 'General';
+
   const currency = await currencyService.findCurrencyByCodeOrThrow(normalizedCode);
 
   const saved = await balanceRepository.upsertBalance({
     userId,
     currencyId: currency.id,
     amount: parsedAmount,
+    bankName: safeBankName,
+    category: safeCategory,
   });
 
   return {
@@ -70,9 +75,23 @@ async function deleteUserBalanceById(userId, balanceId) {
   }
 }
 
+async function getWalletSummary(userId) {
+  const rows = await balanceRepository.listBalancesGroupedByBank(userId);
+
+  return rows.map((row) => ({
+    bankName: row.bank_name,
+    currencies: (row.currencies || []).map((c) => ({
+      ...c,
+      balance: Number(c.balance),
+    })),
+    totalBalance: Number(row.total_balance),
+  }));
+}
+
 module.exports = {
   listUserBalances,
   upsertUserBalance,
   updateUserBalanceById,
   deleteUserBalanceById,
+  getWalletSummary,
 };

@@ -25,28 +25,37 @@ function normalizeTransaction(transaction) {
   };
 }
 
-function buildBalanceDeltaMap({ type, currencyId, amount, referenceCurrencyId, referenceAmount }) {
+function buildBalanceDeltaMap({ type, currencyId, amount, referenceCurrencyId, referenceAmount, bankName = 'Cash' }) {
   const deltaMap = new Map();
 
-  function addDelta(code, delta) {
-    if (!code || !Number.isFinite(delta) || delta === 0) {
+  function deltaKey(cid, bn) {
+    return `${cid}::${bn}`;
+  }
+
+  function addDelta(cid, delta, bn) {
+    if (!cid || !Number.isFinite(delta) || delta === 0) {
       return;
     }
 
-    deltaMap.set(code, (deltaMap.get(code) || 0) + delta);
+    const key = deltaKey(cid, bn);
+    deltaMap.set(key, {
+      currencyId: cid,
+      bankName: bn,
+      delta: ((deltaMap.get(key) || {}).delta || 0) + delta,
+    });
   }
 
   if (type === 'deposit' || type === 'transfer_in') {
-    addDelta(currencyId, amount);
+    addDelta(currencyId, amount, bankName);
   }
 
   if (type === 'withdrawal' || type === 'transfer_out') {
-    addDelta(currencyId, -amount);
+    addDelta(currencyId, -amount, bankName);
   }
 
   if (type === 'conversion') {
-    addDelta(currencyId, -amount);
-    addDelta(referenceCurrencyId, referenceAmount);
+    addDelta(currencyId, -amount, bankName);
+    addDelta(referenceCurrencyId, referenceAmount, bankName);
   }
 
   return deltaMap;
@@ -54,15 +63,20 @@ function buildBalanceDeltaMap({ type, currencyId, amount, referenceCurrencyId, r
 
 function diffBalanceDeltaMaps(previousMap, nextMap) {
   const netDeltaMap = new Map();
-  const currencyIds = new Set([...previousMap.keys(), ...nextMap.keys()]);
+  const allKeys = new Set([...previousMap.keys(), ...nextMap.keys()]);
 
-  for (const currencyId of currencyIds) {
-    const previousDelta = previousMap.get(currencyId) || 0;
-    const nextDelta = nextMap.get(currencyId) || 0;
-    const netDelta = nextDelta - previousDelta;
+  for (const key of allKeys) {
+    const prev = previousMap.get(key) || { delta: 0 };
+    const next = nextMap.get(key) || { delta: 0 };
+    const netDelta = (next.delta || 0) - (prev.delta || 0);
 
     if (netDelta !== 0) {
-      netDeltaMap.set(currencyId, netDelta);
+      const ref = next.currencyId ? next : prev;
+      netDeltaMap.set(key, {
+        currencyId: ref.currencyId,
+        bankName: ref.bankName,
+        delta: netDelta,
+      });
     }
   }
 
@@ -70,14 +84,16 @@ function diffBalanceDeltaMaps(previousMap, nextMap) {
 }
 
 async function applyBalanceDeltaMap(userId, deltaMap) {
-  for (const [currencyId, delta] of deltaMap.entries()) {
-    await applyBalanceMutation(userId, currencyId, delta);
+  for (const entry of deltaMap.values()) {
+    await applyBalanceMutation(userId, entry.currencyId, entry.delta, entry.bankName);
   }
 }
 
-async function applyBalanceMutation(userId, currencyId, delta) {
+async function applyBalanceMutation(userId, currencyId, delta, bankName = 'Cash') {
   const balances = await balanceRepository.listBalancesByUser(userId);
-  const existing = balances.find((balance) => balance.currency_id === currencyId);
+  const existing = balances.find(
+    (balance) => balance.currency_id === currencyId && (balance.bank_name || 'Cash') === bankName
+  );
   const nextAmount = Number(existing?.balance || 0) + delta;
 
   if (nextAmount < 0) {
@@ -88,6 +104,7 @@ async function applyBalanceMutation(userId, currencyId, delta) {
     userId,
     currencyId,
     amount: nextAmount,
+    bankName,
   });
 }
 
@@ -102,6 +119,8 @@ async function createTransaction(userId, payload) {
   const amount = ensurePositiveAmount(payload.amount, 'amount');
   const description = payload.description?.trim() || null;
   const occurredAt = parseOptionalDateTime(payload.occurredAt, 'occurredAt');
+  const bankName = (payload.bankName && String(payload.bankName).trim()) || 'Cash';
+  const category = (payload.category && String(payload.category).trim()) || 'General';
 
   const currency = await currencyService.findCurrencyByCodeOrThrow(currencyCode);
 
@@ -141,6 +160,8 @@ async function createTransaction(userId, payload) {
     referenceAmount,
     description,
     occurredAt,
+    bankName,
+    category,
   });
 
   const deltaMap = buildBalanceDeltaMap({
@@ -149,6 +170,7 @@ async function createTransaction(userId, payload) {
     amount,
     referenceCurrencyId: referenceCurrency?.id || null,
     referenceAmount,
+    bankName,
   });
   await applyBalanceDeltaMap(userId, deltaMap);
 
@@ -185,6 +207,13 @@ async function updateTransaction(userId, transactionId, payload) {
     ? payload.description?.trim() || null
     : existing.description;
 
+  const bankName = Object.prototype.hasOwnProperty.call(payload, 'bankName')
+    ? (payload.bankName && String(payload.bankName).trim()) || 'Cash'
+    : existing.bank_name || 'Cash';
+  const category = Object.prototype.hasOwnProperty.call(payload, 'category')
+    ? (payload.category && String(payload.category).trim()) || 'General'
+    : existing.category || 'General';
+
   const occurredAtInput = Object.prototype.hasOwnProperty.call(payload, 'occurredAt')
     ? payload.occurredAt
     : existing.created_at;
@@ -219,6 +248,7 @@ async function updateTransaction(userId, transactionId, payload) {
     amount: Number(existing.amount),
     referenceCurrencyId: existing.reference_currency_id,
     referenceAmount: Number(existing.reference_amount || 0),
+    bankName: existing.bank_name || 'Cash',
   });
   const nextDeltaMap = buildBalanceDeltaMap({
     type,
@@ -226,6 +256,7 @@ async function updateTransaction(userId, transactionId, payload) {
     amount,
     referenceCurrencyId: referenceCurrency?.id || null,
     referenceAmount,
+    bankName,
   });
   const netDeltaMap = diffBalanceDeltaMaps(previousDeltaMap, nextDeltaMap);
 
@@ -241,6 +272,8 @@ async function updateTransaction(userId, transactionId, payload) {
     referenceAmount,
     description,
     occurredAt: parsedOccurredAt || existing.created_at,
+    bankName,
+    category,
   });
 
   if (!updated) {
@@ -267,11 +300,16 @@ async function deleteTransaction(userId, transactionId) {
     amount: Number(existing.amount),
     referenceCurrencyId: existing.reference_currency_id,
     referenceAmount: Number(existing.reference_amount || 0),
+    bankName: existing.bank_name || 'Cash',
   });
   const reverseDeltaMap = new Map();
 
-  for (const [currencyId, delta] of previousDeltaMap.entries()) {
-    reverseDeltaMap.set(currencyId, -delta);
+  for (const [key, entry] of previousDeltaMap.entries()) {
+    reverseDeltaMap.set(key, {
+      currencyId: entry.currencyId,
+      bankName: entry.bankName,
+      delta: -entry.delta,
+    });
   }
 
   await applyBalanceDeltaMap(userId, reverseDeltaMap);

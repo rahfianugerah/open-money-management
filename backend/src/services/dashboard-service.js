@@ -37,6 +37,7 @@ async function getDashboardSummary(userId) {
   const totalUsd = await aggregateBalances(userId, 'USD');
   const totalIdr = await aggregateBalances(userId, 'IDR');
   const incomeExpense = await transactionService.getIncomeExpenseSummary(userId, 6);
+  const walletSummary = await balanceService.getWalletSummary(userId);
 
   return {
     balances,
@@ -45,6 +46,7 @@ async function getDashboardSummary(userId) {
       idr: totalIdr,
     },
     incomeExpense,
+    walletSummary,
   };
 }
 

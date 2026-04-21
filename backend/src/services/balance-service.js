@@ -45,16 +45,21 @@ async function upsertUserBalance(userId, { currencyCode, amount, bankName, categ
   };
 }
 
-async function updateUserBalanceById(userId, balanceId, { amount }) {
+async function updateUserBalanceById(userId, balanceId, { amount, bankName, category }) {
   const parsedAmount = parseAmount(amount, 'amount');
   if (parsedAmount < 0) {
     throw new AppError('amount cannot be negative', 400);
   }
 
+  const safeBankName = bankName !== undefined ? (String(bankName).trim() || 'Cash') : undefined;
+  const safeCategory = category !== undefined ? (String(category).trim() || 'General') : undefined;
+
   const updated = await balanceRepository.updateBalanceById({
     id: balanceId,
     userId,
     amount: parsedAmount,
+    bankName: safeBankName,
+    category: safeCategory,
   });
 
   if (!updated) {

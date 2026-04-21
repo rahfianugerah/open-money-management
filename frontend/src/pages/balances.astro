@@ -192,10 +192,11 @@ import AppShell from '../components/AppShell.astro';
     currencyInput.value = balance.currency_code;
     currencyInput.disabled = true;
     bankNameInput.value = balance.bank_name || '';
-    bankNameInput.disabled = true;
+    bankNameInput.disabled = false;
     categoryInput.value = balance.category || '';
+    categoryInput.disabled = false;
     amountInput.value = String(balance.balance);
-    dialogTitle.textContent = `Edit Balance (${balance.currency_code})`;
+    dialogTitle.textContent = `Edit Balance — ${balance.bank_name || 'Cash'} (${balance.currency_code})`;
     dialog.showModal();
   }
 
@@ -214,6 +215,8 @@ import AppShell from '../components/AppShell.astro';
       if (balanceId) {
         await updateBalance(balanceId, {
           amount: amountInput.value,
+          bankName: bankNameInput.value || undefined,
+          category: categoryInput.value || undefined,
         });
         showStatus({ success: 'Balance updated successfully.' });
       } else {

@@ -1,0 +1,23 @@
+{
+  "name": "open-money-management",
+  "version": "1.0.0",
+  "description": "",
+  "homepage": "https://github.com/rahfianugerah/open-money-management#readme",
+  "bugs": {
+    "url": "https://github.com/rahfianugerah/open-money-management/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rahfianugerah/open-money-management.git"
+  },
+  "license": "ISC",
+  "author": "rahfianugerah",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start:backend": "cd backend && npm run start",
+    "start:frontend": "cd frontend && npm run dev",
+    "start": "npm run start:frontend & npm run start:backend"
+  }
+}

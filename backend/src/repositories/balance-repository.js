@@ -54,15 +54,18 @@ async function upsertBalance({ userId, currencyId, amount, bankName = 'Cash', ca
   return result.rows[0];
 }
 
-async function updateBalanceById({ id, userId, amount }) {
+async function updateBalanceById({ id, userId, amount, bankName, category }) {
   const result = await query(
     `
       UPDATE balances
-      SET balance = $3, updated_at = NOW()
+      SET balance = $3,
+          bank_name = COALESCE($4, bank_name),
+          category  = COALESCE($5, category),
+          updated_at = NOW()
       WHERE id = $1 AND user_id = $2
       RETURNING id, user_id, currency_id, balance, bank_name, category, updated_at
     `,
-    [id, userId, amount]
+    [id, userId, amount, bankName ?? null, category ?? null]
   );
 
   return result.rows[0] || null;

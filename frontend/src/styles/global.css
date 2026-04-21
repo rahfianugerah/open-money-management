@@ -691,6 +691,13 @@ button:active,
   color: #b91c1c;
 }
 
+.btn-danger:hover {
+  border-color: #ef4444;
+  background: #fee2e2;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25);
+  transform: translateY(-1px);
+}
+
 .input,
 textarea,
 select {

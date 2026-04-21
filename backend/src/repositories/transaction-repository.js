@@ -153,6 +153,13 @@ async function updateTransactionById({
   return result.rows[0] || null;
 }
 
+async function bulkRenameBankName(userId, oldBankName, newBankName) {
+  await query(
+    `UPDATE transactions SET bank_name = $3 WHERE user_id = $1 AND bank_name = $2`,
+    [userId, oldBankName, newBankName]
+  );
+}
+
 async function deleteTransactionById(id, userId) {
   const result = await query(
     `
@@ -244,6 +251,7 @@ module.exports = {
   findTransactionById,
   createTransaction,
   updateTransactionById,
+  bulkRenameBankName,
   deleteTransactionById,
   getIncomeExpenseSummaryByMonth,
   getOhlcSummaryByMonth,

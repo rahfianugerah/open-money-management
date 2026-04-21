@@ -68,6 +68,11 @@ import AppShell from '../components/AppShell.astro';
             <input id="balance-category" name="category" class="input" placeholder="General" />
           </div>
         </div>
+
+        <div class="form-row">
+          <label for="balance-recorded-at" class="field-label">Recorded At (optional)</label>
+          <input id="balance-recorded-at" name="recordedAt" type="datetime-local" class="input" />
+        </div>
       </div>
 
       <footer class="dialog-footer">
@@ -103,6 +108,7 @@ import AppShell from '../components/AppShell.astro';
   const amountInput = document.getElementById('balance-amount');
   const bankNameInput = document.getElementById('balance-bank-name');
   const categoryInput = document.getElementById('balance-category');
+  const recordedAtInput = document.getElementById('balance-recorded-at');
 
   let cachedBalances = [];
 
@@ -122,6 +128,12 @@ import AppShell from '../components/AppShell.astro';
       hour: '2-digit',
       minute: '2-digit',
     });
+  }
+
+  // Converts a Date to yyyy-MM-ddTHH:mm for datetime-local inputs.
+  function toDateTimeInputValue(date = new Date()) {
+    const tzOffsetMs = date.getTimezoneOffset() * 60_000;
+    return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 16);
   }
 
   function showStatus({ error = '', success = '' }) {
@@ -177,6 +189,7 @@ import AppShell from '../components/AppShell.astro';
     balanceIdInput.value = '';
     currencyInput.disabled = false;
     bankNameInput.disabled = false;
+    recordedAtInput.value = toDateTimeInputValue();
     dialogTitle.textContent = 'Add Balance';
     dialog.showModal();
   }
@@ -196,6 +209,7 @@ import AppShell from '../components/AppShell.astro';
     categoryInput.value = balance.category || '';
     categoryInput.disabled = false;
     amountInput.value = String(balance.balance);
+    recordedAtInput.value = balance.updated_at ? toDateTimeInputValue(new Date(balance.updated_at)) : toDateTimeInputValue();
     dialogTitle.textContent = `Edit Balance — ${balance.bank_name || 'Cash'} (${balance.currency_code})`;
     dialog.showModal();
   }
@@ -217,6 +231,7 @@ import AppShell from '../components/AppShell.astro';
           amount: amountInput.value,
           bankName: bankNameInput.value || undefined,
           category: categoryInput.value || undefined,
+          recordedAt: recordedAtInput.value || undefined,
         });
         showStatus({ success: 'Balance updated successfully.' });
       } else {
@@ -225,6 +240,7 @@ import AppShell from '../components/AppShell.astro';
           amount: amountInput.value,
           bankName: bankNameInput.value || undefined,
           category: categoryInput.value || undefined,
+          recordedAt: recordedAtInput.value || undefined,
         });
         showStatus({ success: 'Balance saved successfully.' });
       }

@@ -39,36 +39,43 @@ async function findBalanceById(id, userId) {
   return result.rows[0] || null;
 }
 
-async function upsertBalance({ userId, currencyId, amount, bankName = 'Cash', category = 'General' }) {
+async function upsertBalance({ userId, currencyId, amount, bankName = 'Cash', category = 'General', recordedAt }) {
   const result = await query(
     `
       INSERT INTO balances (user_id, currency_id, balance, bank_name, category, updated_at)
-      VALUES ($1, $2, $3, $4, $5, NOW())
+      VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamp, NOW()))
       ON CONFLICT (user_id, currency_id, bank_name)
-      DO UPDATE SET balance = EXCLUDED.balance, category = EXCLUDED.category, updated_at = NOW()
+      DO UPDATE SET balance = EXCLUDED.balance, category = EXCLUDED.category, updated_at = COALESCE($6::timestamp, NOW())
       RETURNING id, user_id, currency_id, balance, bank_name, category, updated_at
     `,
-    [userId, currencyId, amount, bankName, category]
+    [userId, currencyId, amount, bankName, category, recordedAt ?? null]
   );
 
   return result.rows[0];
 }
 
-async function updateBalanceById({ id, userId, amount, bankName, category }) {
+async function updateBalanceById({ id, userId, amount, bankName, category, recordedAt }) {
   const result = await query(
     `
       UPDATE balances
       SET balance = $3,
           bank_name = COALESCE($4, bank_name),
           category  = COALESCE($5, category),
-          updated_at = NOW()
+          updated_at = COALESCE($6::timestamp, NOW())
       WHERE id = $1 AND user_id = $2
       RETURNING id, user_id, currency_id, balance, bank_name, category, updated_at
     `,
-    [id, userId, amount, bankName ?? null, category ?? null]
+    [id, userId, amount, bankName ?? null, category ?? null, recordedAt ?? null]
   );
 
   return result.rows[0] || null;
+}
+
+async function bulkRenameBankName(userId, oldBankName, newBankName) {
+  await query(
+    `UPDATE balances SET bank_name = $3, updated_at = NOW() WHERE user_id = $1 AND bank_name = $2`,
+    [userId, oldBankName, newBankName]
+  );
 }
 
 async function deleteBalanceById(id, userId) {
@@ -115,5 +122,6 @@ module.exports = {
   findBalanceById,
   upsertBalance,
   updateBalanceById,
+  bulkRenameBankName,
   deleteBalanceById,
 };

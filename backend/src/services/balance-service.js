@@ -1,6 +1,7 @@
 const AppError = require('../utils/app-error');
 const { parseAmount, normalizeCurrencyCode } = require('../utils/validation');
 const balanceRepository = require('../repositories/balance-repository');
+const transactionRepository = require('../repositories/transaction-repository');
 const currencyService = require('./currency-service');
 
 function normalizeBalanceRecord(record) {
@@ -15,7 +16,7 @@ async function listUserBalances(userId) {
   return balances.map(normalizeBalanceRecord);
 }
 
-async function upsertUserBalance(userId, { currencyCode, amount, bankName, category }) {
+async function upsertUserBalance(userId, { currencyCode, amount, bankName, category, recordedAt }) {
   const normalizedCode = normalizeCurrencyCode(currencyCode, 'currencyCode');
   const parsedAmount = parseAmount(amount, 'amount');
 
@@ -25,6 +26,10 @@ async function upsertUserBalance(userId, { currencyCode, amount, bankName, categ
 
   const safeBankName = (bankName && String(bankName).trim()) || 'Cash';
   const safeCategory = (category && String(category).trim()) || 'General';
+  const safeRecordedAt = recordedAt ? new Date(recordedAt) : undefined;
+  if (safeRecordedAt && Number.isNaN(safeRecordedAt.valueOf())) {
+    throw new AppError('recordedAt is not a valid date', 400);
+  }
 
   const currency = await currencyService.findCurrencyByCodeOrThrow(normalizedCode);
 
@@ -34,6 +39,7 @@ async function upsertUserBalance(userId, { currencyCode, amount, bankName, categ
     amount: parsedAmount,
     bankName: safeBankName,
     category: safeCategory,
+    recordedAt: safeRecordedAt ?? null,
   });
 
   return {
@@ -45,7 +51,12 @@ async function upsertUserBalance(userId, { currencyCode, amount, bankName, categ
   };
 }
 
-async function updateUserBalanceById(userId, balanceId, { amount, bankName, category }) {
+async function updateUserBalanceById(userId, balanceId, { amount, bankName, category, recordedAt }) {
+  const existing = await balanceRepository.findBalanceById(balanceId, userId);
+  if (!existing) {
+    throw new AppError('Balance not found', 404);
+  }
+
   const parsedAmount = parseAmount(amount, 'amount');
   if (parsedAmount < 0) {
     throw new AppError('amount cannot be negative', 400);
@@ -53,6 +64,10 @@ async function updateUserBalanceById(userId, balanceId, { amount, bankName, cate
 
   const safeBankName = bankName !== undefined ? (String(bankName).trim() || 'Cash') : undefined;
   const safeCategory = category !== undefined ? (String(category).trim() || 'General') : undefined;
+  const safeRecordedAt = recordedAt ? new Date(recordedAt) : undefined;
+  if (safeRecordedAt && Number.isNaN(safeRecordedAt.valueOf())) {
+    throw new AppError('recordedAt is not a valid date', 400);
+  }
 
   const updated = await balanceRepository.updateBalanceById({
     id: balanceId,
@@ -60,10 +75,17 @@ async function updateUserBalanceById(userId, balanceId, { amount, bankName, cate
     amount: parsedAmount,
     bankName: safeBankName,
     category: safeCategory,
+    recordedAt: safeRecordedAt ?? null,
   });
 
   if (!updated) {
     throw new AppError('Balance not found', 404);
+  }
+
+  // Cascade rename: update all other balances and transactions that share the old bank name.
+  if (safeBankName !== undefined && safeBankName !== existing.bank_name) {
+    await balanceRepository.bulkRenameBankName(userId, existing.bank_name, safeBankName);
+    await transactionRepository.bulkRenameBankName(userId, existing.bank_name, safeBankName);
   }
 
   return {

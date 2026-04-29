@@ -18,7 +18,6 @@
 
 A self-hosted, offline-first personal finance application for tracking balances, recording transactions, managing multi-currency accounts, and analyzing spending patterns through visual charts and an AI-powered chatbot.
 
-
 ### Table of Contents
 
 - [Overview](#overview)
@@ -76,8 +75,6 @@ Open Money Management is a full-stack web application designed for individuals w
 | Charts | Chart.js 4 |
 | Language | JavaScript (client-side modules) |
 | Styling | Custom CSS (`global.css`) |
-
----
 
 ### Project Structure
 
@@ -204,8 +201,6 @@ Create `frontend/.env` based on `frontend/.env.example`.
 |---|---|---|
 | `PUBLIC_API_BASE_URL` | `http://localhost:3000` | Base URL of the backend API |
 
----
-
 ### API Reference
 
 All endpoints under `/api/*` require a valid `Authorization: Bearer <token>` header unless noted otherwise.
@@ -270,8 +265,6 @@ Supported transaction types: `deposit`, `withdrawal`, `transfer_in`, `transfer_o
 |---|---|---|---|
 | `GET` | `/health` | No | Returns API health status |
 
----
-
 ### Database Migrations
 
 Migrations live in `backend/migrations/` and are named with a numeric prefix to enforce execution order. The migration runner tracks applied migrations in a `schema_migrations` table.
@@ -287,3 +280,7 @@ Migrations live in `backend/migrations/` and are named with a numeric prefix to 
 | `007_bank_category_dimensions.sql` | Bank name and category dimensions on balances and transactions |
 
 To add a new migration, create a file following the `NNN_description.sql` naming convention and run `npm run migrate` again.
+
+### License
+
+This project is licensed under the MIT License. This means you are free to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software. The full text of the license is available in the <a href="https://github.com/rahfianugerah/open-money-management/blob/main/LICENSE">LICENSE</a> file. By using this project, you agree to include the license notice and disclaimers in all copies or substantial portions of the Software. For more details on the terms and conditions of the MIT License, please refer to the license file.

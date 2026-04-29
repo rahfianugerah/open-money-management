@@ -10,7 +10,7 @@
     "type": "git",
     "url": "git+https://github.com/rahfianugerah/open-money-management.git"
   },
-  "license": "ISC",
+  "license": "MIT",
   "author": "rahfianugerah",
   "type": "commonjs",
   "main": "index.js",

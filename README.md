@@ -9,14 +9,15 @@
 
 <div align=center>
 
-<h3><b><a href="https://github.com/rahfianugerah/open-money-management">$_</a></b>Open Money Management
+<h3>
+  <b><a href="https://github.com/rahfianugerah/open-money-management">$_</a></b>Open Money Management
 </h3>
 
+<p>
+  A self-hosted, offline-first personal finance application for tracking balances, recording transactions, managing multi-currency accounts, and analyzing spending patterns through visual charts and an AI-powered chatbot.
+</p>
+
 </div>
-
-### Project Overview
-
-A self-hosted, offline-first personal finance application for tracking balances, recording transactions, managing multi-currency accounts, and analyzing spending patterns through visual charts and an AI-powered chatbot.
 
 ### Table of Contents
 
